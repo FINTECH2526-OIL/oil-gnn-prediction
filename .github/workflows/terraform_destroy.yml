@@ -5,15 +5,15 @@ on:
     branches: [ "main" ]
   workflow_dispatch:
 
-permissions:
-  contents: read
-
 default:
   env:
     TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
     TF_VAR_project_region: ${{ secrets.TF_VAR_PROJECT_REGION }}
     TF_VAR_credentials: ${{ secrets.TF_VAR_CREDENTIALS }}
     TF_VAR_service_account_id: ${{ secrets.TF_VAR_SERVICE_ACCOUNT_ID }}
+
+permissions:
+  contents: read
 
 jobs:
   terraform:
@@ -42,22 +42,6 @@ jobs:
     - name: Terraform Init
       working-directory: ./deployment/
       run: terraform init
-
-    # Checks that all Terraform configuration files adhere to a canonical format
-    - name: Terraform Format
+    - name: Terraform destroy
       working-directory: ./deployment/
-      run: terraform fmt -check
-
-    # Generates an execution plan for Terraform
-    - name: Terraform Plan
-      working-directory: ./deployment/
-      run: terraform plan -input=false
-
-      # On push to "main", build or change infrastructure according to Terraform configuration files
-      # Note: It is recommended to set up a required "strict" status check in your repository for "Terraform Cloud". See the documentation on "strict" required status checks for more information: https://help.github.com/en/github/administering-a-repository/types-of-required-status-checks
-    - name: Terraform Apply
-      working-directory: ./deployment/
-      if: github.ref == 'refs/heads/"main"' && github.event_name == 'push'
-      run: terraform apply -auto-approve -input=false -vars
-
-
+      run: terraform destroy --auto-approve
