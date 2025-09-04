@@ -1,10 +1,10 @@
 terraform {
   cloud {
-    organization = "oil-gnn-prediction" 
+    organization = "oil-gnn-prediction"
 
-    workspaces { 
-      name = "Oil-GNN-Prediction" 
-    } 
+    workspaces {
+      name = "Oil-GNN-Prediction"
+    }
   }
   required_providers {
     google = {
