@@ -11,7 +11,10 @@
 ```bash
 python -c 'import json, sys;output="";output=json.dumps(json.load(sys.stdin), indent=None,separators=(",",":"));sys.stdout.write(output.replace("\"","\\\"").replace("\\n","\\\\n"))' < {INSERT_JSON_FILE_HERE}
 ```
-4. Put the output into a var file (ex. main.tfvars) as credentials
+4. Put the output into a var file (ex. main.tfvars) as credentials 
+```tf
+credentials="{INSERT_OUTPUT_HERE}"
+```
 5. Fill in the rest of the required variables (ex. project id and region)
 6. Enable the following APIs via CLI
 ```bash
