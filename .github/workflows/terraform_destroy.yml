@@ -1,16 +1,13 @@
 name: 'Terraform'
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
 
-default:
-  env:
-    TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
-    TF_VAR_project_region: ${{ secrets.TF_VAR_PROJECT_REGION }}
-    TF_VAR_credentials: ${{ secrets.TF_VAR_CREDENTIALS }}
-    TF_VAR_service_account_id: ${{ secrets.TF_VAR_SERVICE_ACCOUNT_ID }}
+env:
+  TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
+  TF_VAR_project_region: ${{ secrets.TF_VAR_PROJECT_REGION }}
+  TF_VAR_credentials: ${{ secrets.TF_VAR_CREDENTIALS }}
+  TF_VAR_service_account_id: ${{ secrets.TF_VAR_SERVICE_ACCOUNT_ID }}
 
 permissions:
   contents: read
