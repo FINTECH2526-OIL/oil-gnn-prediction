@@ -12,3 +12,8 @@ variable "project_region" {
   description = "Project Region"
   type = string
 }
+
+variable "service_name" {
+  description = "Cloud Run Service Name"
+  type = string
+}

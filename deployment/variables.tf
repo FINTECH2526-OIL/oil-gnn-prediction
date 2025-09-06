@@ -18,3 +18,8 @@ variable "service_account_id" {
   description = "Account ID of Service Account"
   type        = string
 }
+
+variable "service_name" {
+  description = "Cloud Run Service Name"
+  type        = string
+}

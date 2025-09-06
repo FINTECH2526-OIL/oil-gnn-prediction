@@ -11,10 +11,10 @@ module "cloud_run" {
   source  = "GoogleCloudPlatform/cloud-run/google"
   version = "~> 0.16"
 
-  service_name          = "oil-gnn-prediction" // Hardcoded to reduce confusion in understanding deployment
+  service_name          = var.service_name
   project_id            = module.google_project.gcp_project_id
   location              = module.google_project.gcp_project_region
-  image                 = "${var.project_region}-docker.pkg.dev/${var.project_id}/${self.service_name}"
+  image                 = "${var.project_region}-docker.pkg.dev/${var.project_id}/${var.service_name}"
   service_account_email = data.google_service_account.service_account.email
 }
 
