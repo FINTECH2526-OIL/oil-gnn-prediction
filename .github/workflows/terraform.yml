@@ -45,6 +45,6 @@ jobs:
 
     - name: Terraform Apply
       working-directory: ./deployment/
-      run: terraform apply -auto-approve -input=false -vars
+      run: terraform apply -auto-approve -input=false 
 
 
