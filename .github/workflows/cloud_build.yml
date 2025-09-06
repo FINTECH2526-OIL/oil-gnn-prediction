@@ -40,7 +40,7 @@ env:
   TF_VAR_service_account_id: ${{ secrets.TF_VAR_SERVICE_ACCOUNT_ID }}
   PROJECT_ID: '${{ secrets.TF_VAR_PROJECT_ID }}'
   REGION: '${{ secrets.TF_VAR_PROJECT_REGION }}' 
-  SERVICE: '${{ var.TF_VAR_service_name }}' 
+  SERVICE: '${{ vars.TF_VAR_service_name }}' 
 
 jobs:
   deploy:
