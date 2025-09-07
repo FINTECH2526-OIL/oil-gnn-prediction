@@ -23,3 +23,8 @@ variable "service_name" {
   description = "Cloud Run Service Name"
   type        = string
 }
+
+variable "docker_repo_name" {
+  description = "Name of Artifact Repository (For storing docker images)"
+  type        = string
+}

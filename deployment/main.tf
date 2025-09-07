@@ -4,4 +4,5 @@ module "webapp" {
   project_id         = var.project_id
   project_region     = var.project_region
   service_name       = var.service_name
+  docker_repo_name   = var.docker_repo_name
 }
