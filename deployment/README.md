@@ -1,11 +1,21 @@
+# Requirements
+1. Docker Desktop
+2. Terraform
+3. GCloud CLI (For triggering cloud run deployment)
+
 # Deployment Setup (Outside of main email used)
 1. Create a Service Acocunt (take note of the unique id) and grant it the below mentioned roles
     - Cloud Run Admin
-    - Cloud Build Creator
-    - Storage Object Creator
-    - Storage Object Viewer
+    - Cloud Run Source Developer
+    - Artifact Registry Administrator 
     - Create Service Account
     - Service Account User
+2. Run the below command to enable the required APIs (If any are missed out, please raise an issue)
+```bash
+gcloud services enable cloudresourcemanager.googleapis.com
+gcloud services enable artifactregistry.googleapis.com
+gcloud services enable iam  
+```
 2. From the service account, create a key in JSON
 3. Run the following script to obtain a minifed json output
 ```bash
@@ -20,18 +30,12 @@ python -c 'import json, sys;output="";output=json.dumps(json.load(sys.stdin), in
 credentials="{INSERT_OUTPUT_HERE}"
 ```
 5. Fill in the rest of the required variables (ex. project id and region)
-6. Enable the following APIs via CLI
-```bash
-gcloud services enable iam  
-```
+6. Fill in the required fields in `push_image.sh`
+7. Run the below command to deploy
 
-# To plan
-
-# To Deploy
+Note: The below script will <strong>auto-deploy</strong> the infrastructure planned
 
 ```bash
-terraform apply -var-file="{INSERT_VAR_FILE_HERE}"
+bash ./deploy.sh
 ```
-
-Include `-auto-approve` to allow for deployment without confirmation 
 

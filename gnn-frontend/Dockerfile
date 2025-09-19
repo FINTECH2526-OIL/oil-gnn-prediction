@@ -4,7 +4,7 @@ FROM node:lts-alpine as build-stage
 WORKDIR /app
 
 COPY package*.json ./
-RUN npm ci --production
+RUN npm ci 
 
 COPY . .
 RUN npm run build

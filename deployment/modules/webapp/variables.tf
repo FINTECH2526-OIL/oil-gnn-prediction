@@ -22,3 +22,8 @@ variable "docker_repo_name" {
   description = "Name of Artifact Repository (For storing docker images)"
   type = string
 }
+
+variable "app_path" {
+  description = "Folder path of application"
+  type = string
+}
