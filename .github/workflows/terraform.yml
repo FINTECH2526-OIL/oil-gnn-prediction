@@ -9,10 +9,10 @@ permissions:
   contents: read
 
 env:
-  TF_VAR_project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
-  TF_VAR_project_region: ${{ secrets.TF_VAR_PROJECT_REGION }}
   TF_VAR_credentials: ${{ secrets.TF_VAR_CREDENTIALS }}
-  TF_VAR_service_account_id: ${{ secrets.TF_VAR_SERVICE_ACCOUNT_ID }}
+  TF_VAR_project_id: ${{ vars.TF_VAR_PROJECT_ID }}
+  TF_VAR_project_region: ${{ vars.TF_VAR_PROJECT_REGION }}
+  TF_VAR_service_account_id: ${{ vars.TF_VAR_SERVICE_ACCOUNT_ID }}
   TF_VAR_service_name: ${{ vars.TF_VAR_service_name }}
   TF_VAR_docker_repo_name: ${{ vars.TF_VAR_docker_repo_name }}
 
@@ -46,39 +46,5 @@ jobs:
 
     - name: Terraform Apply
       working-directory: ./deployment/
-      run: terraform apply -auto-approve -input=false
-
-    - name: Docker Push image
-      working-directory: ./deployment/
-      run: 
-
-    - name: Authenticate with Google Cloud
-      uses: google-github-actions/auth@v1
-      with:
-        credentials_json: ${{ secrets.TF_VAR_CREDENTIALS }} 
-
-    - name: Set up Google Cloud SDK
-      uses: google-github-actions/setup-gcloud@v1
-      with:
-        project_id: ${{ secrets.TF_VAR_PROJECT_ID }}
-    
-    - name: Configure Docker to use gcloud as a credential helper
-      run: |
-        gcloud auth configure-docker ${{ secrets.TF_VAR_PROJECT_REGION }}-docker.pkg.dev
-
-    - name: Build and Push Docker image
-      run: |
-        IMAGE_URI="$$TF_VAR_PROJECT_REGION-docker.pkg.dev/$TF_VAR_PROJECT_ID/$TF_VAR_docker_repo_name/$TF_VAR_service_name"
-        docker build -t "$IMAGE_URI" .
-        docker push "$IMAGE_URI"
-
-
-
-    - name: Deploy to Cloud Run
-      run: |
-        gcloud run deploy $TF_VAR_service_name \
-            --image $TF_VAR_PROJECT_REGION-docker.pkg.dev/$TF_VAR_PROJECT_ID/$TF_VAR_docker_repo_name/$TF_VAR_service_name" \
-            --platform managed \
-            --region $TF_VAR_PROJECT_REGION
-
+      run: terraform apply -auto-approve -input=false -lock=false
 
