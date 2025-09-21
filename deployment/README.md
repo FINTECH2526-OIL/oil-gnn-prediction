@@ -25,15 +25,22 @@ python -c 'import json, sys;output="";output=json.dumps(json.load(sys.stdin), in
 python -c 'import json, sys;output="";output=json.dumps(json.load(sys.stdin), indent=None,separators=(",",":"));sys.stdout.write(output)' < {INSERT_JSON_FILE_HERE}
 
 ```
-4. Put the output into a var file (ex. main.tfvars) as credentials 
-```tf
-credentials="{INSERT_OUTPUT_HERE}"
-```
-5. Fill in the rest of the required variables (ex. project id and region)
-6. Fill in the required fields in `push_image.sh`
-7. Run the below command to deploy
+4. Put the output into a var file (ex. main.tfvars) as credentials and fill in the rest of the required variables
 
-Note: The below script will <strong>auto-deploy</strong> the infrastructure planned
+Template of tfvars file
+```terraform
+credentials        = "INSERT_CRED_OUTPUT_HERE"
+project_id         = "INSERT_PROJECT_ID"
+project_region     = "INSERT_PROJECT_REGION"
+service_account_id = "INSERT_ACCOUNT_ID"
+docker_repo_name   = "INSERT_REPO_NAME"
+service_name       = "INSERT_CLOUD_RUN_SERVICE_NAME"
+
+```
+5. Fill in the required fields in `push_image.sh`
+6. Run the below command to deploy
+
+Note: The below script will <strong>auto-deploy</strong> the infrastructure
 
 ```bash
 bash ./deploy.sh
