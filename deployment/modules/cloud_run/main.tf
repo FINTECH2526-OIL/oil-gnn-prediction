@@ -7,17 +7,6 @@ data "google_service_account" "service_account" {
 }
 
 
-resource "google_artifact_registry_repository" "docker_repo" {
-  project      = var.project_id
-  location     = var.project_region
-  repository_id = var.docker_repo_name
-  description  = "Docker repository for Cloud Run images"
-  format       = "DOCKER"
-  # Optional: Keep image tags immutable to prevent overwrites
-  # immutable_tags = true 
-  
-  # Wait for the API to be enabled before creating the repository
-}
 
 # module "docker_image" {
 #   source = "../docker_image"
@@ -29,23 +18,27 @@ resource "google_artifact_registry_repository" "docker_repo" {
 
 
 module "cloud_run" {
-  depends_on = [google_artifact_registry_repository.docker_repo]
   source  = "GoogleCloudPlatform/cloud-run/google"
   version = "~> 0.16"
 
   service_name          = var.service_name
   project_id            = module.google_project.gcp_project_id
   location              = module.google_project.gcp_project_region
-  image                 = "${var.project_region}-docker.pkg.dev/${var.project_id}/${var.docker_repo_name}/${var.service_name}:latest"
+  image                 = var.use_image ? "${var.project_region}-docker.pkg.dev/${var.project_id}/${var.docker_repo_name}/${var.service_name}:latest" : "gcr.io/cloudrun/hello"
   service_account_email = data.google_service_account.service_account.email
+  env_vars = var.service_env_vars
 }
 
 
-data "google_iam_policy" "noauth" {
+
+
+data "google_iam_policy" "conditional_auth" {
   binding {
     role = "roles/run.invoker"
     members = [
-      "allUsers",
+      var.use_service_account_for_auth ? 
+      format("serviceaccount:%s",data.google_service_account.service_account.email)
+      : "allUsers"
     ]
   }
 }
@@ -54,5 +47,5 @@ resource "google_cloud_run_service_iam_policy" "noauth" {
   location    = module.cloud_run.location
   project     = module.cloud_run.project_id
   service     = module.cloud_run.service_name
-  policy_data = data.google_iam_policy.noauth.policy_data
+  policy_data = data.google_iam_policy.conditional_auth.policy_data
 }

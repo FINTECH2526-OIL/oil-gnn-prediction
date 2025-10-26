@@ -19,7 +19,12 @@ variable "service_account_id" {
   type        = string
 }
 
-variable "service_name" {
+variable "model_service_name" {
+  description = "Cloud Run Service Name"
+  type        = string
+}
+
+variable "web_service_name" {
   description = "Cloud Run Service Name"
   type        = string
 }
@@ -27,4 +32,13 @@ variable "service_name" {
 variable "docker_repo_name" {
   description = "Name of Artifact Repository (For storing docker images)"
   type        = string
+}
+
+variable "vpc_name" {
+    type = string
+}
+
+variable "use_image" {
+  type = bool 
+  default = false
 }
