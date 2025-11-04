@@ -1,0 +1,65 @@
+
+name: 'Refresh App'
+
+on:
+  push:
+    branches: [ "main", "CICD-Pipeline-Debug"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_VAR_credentials: ${{ secrets.TF_VAR_CREDENTIALS }}
+  TF_VAR_project_id: ${{ vars.TF_VAR_PROJECT_ID }}
+  TF_VAR_project_region: ${{ vars.TF_VAR_PROJECT_REGION }}
+  TF_VAR_service_account_id: ${{ vars.TF_VAR_SERVICE_ACCOUNT_ID }}
+  TF_VAR_web_service_name: ${{ vars.TF_VAR_web_service_name }}
+  TF_VAR_model_service_name: ${{ vars.TF_VAR_model_service_name }}
+  TF_VAR_docker_repo_name: ${{ vars.TF_VAR_docker_repo_name }}
+
+jobs:
+  refresh_app:
+    name: 'Refresh Application'
+    if: github.repository == 'Derrick-Png/oil-gnn-prediction' || github.repository == 'FINTECH2526-OIL/oil-gnn-prediction'
+    runs-on: ubuntu-latest
+    environment: production
+
+    # Use the Bash shell regardless whether the GitHub Actions runner is ubuntu-latest, macos-latest, or windows-latest
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+    # Checkout the repository to the GitHub Actions runner
+    - name: Checkout
+      uses: actions/checkout@v4
+
+    - name: Authenticate with Google Cloud
+      uses: google-github-actions/auth@v2
+      with:
+        credentials_json: ${{ secrets.GCLOUD_CREDENTIALS }} 
+
+    - name: Set up Google Cloud SDK
+      uses: google-github-actions/setup-gcloud@v1
+      with:
+        project_id: ${{ vars.TF_VAR_PROJECT_ID }}
+    
+    - name: Configure Docker to use gcloud as a credential helper
+      run: |
+        gcloud auth configure-docker ${{ vars.TF_VAR_PROJECT_REGION }}-docker.pkg.dev
+
+    - name: Build and Push Docker image
+      run: |
+        IMAGE_URI="$TF_VAR_project_region-docker.pkg.dev/$TF_VAR_project_id/$TF_VAR_docker_repo_name/$TF_VAR_service_name"
+        docker build -t "$IMAGE_URI" ${{ vars.TF_VAR_docker_build_path }}
+        docker push "$IMAGE_URI"
+
+
+
+    - name: Deploy to Cloud Run
+      uses: google-github-actions/deploy-cloudrun@v2
+      with:
+        service: ${{ vars.TF_VAR_service_name }}
+        image: ${{ vars.TF_VAR_PROJECT_REGION }}-docker.pkg.dev/${{ vars.TF_VAR_PROJECT_ID }}/${{ vars.TF_VAR_docker_repo_name }}/${{ vars.TF_VAR_service_name }}:latest
+        region: ${{ vars.TF_VAR_PROJECT_REGION }}
