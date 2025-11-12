@@ -91,13 +91,19 @@ class ModelInference:
                 metadata = json.load(f)
                 metadata_features = metadata.get('feature_columns')
                 if metadata_features:
-                    print(f"Loaded {len(metadata_features)} features from metadata.json")
+                    print(
+                        f"Loaded {len(metadata_features)} features from metadata.json",
+                        file=sys.stderr,
+                    )
         
         scaler_features = None
         if hasattr(self.scaler_X, 'feature_names_in_'):
             scaler_features = self.scaler_X.feature_names_in_.tolist()
             if scaler_features:
-                print(f"Loaded {len(scaler_features)} feature names from scaler.feature_names_in_")
+                print(
+                    f"Loaded {len(scaler_features)} feature names from scaler.feature_names_in_",
+                    file=sys.stderr,
+                )
         
         if scaler_features:
             self.feature_columns = scaler_features
@@ -106,18 +112,25 @@ class ModelInference:
             if expected and len(metadata_features) >= expected:
                 self.feature_columns = metadata_features[:expected]
                 if len(metadata_features) != expected:
-                    print(f"Trimmed metadata feature list from {len(metadata_features)} to {expected} to match scaler")
+                    print(
+                        f"Trimmed metadata feature list from {len(metadata_features)} to {expected} to match scaler",
+                        file=sys.stderr,
+                    )
             elif expected and len(metadata_features) < expected:
                 print(
                     f"WARNING: Metadata provides {len(metadata_features)} features but scaler expects {expected}. "
-                    "Falling back to default feature list."
+                    "Falling back to default feature list.",
+                    file=sys.stderr,
                 )
                 self.feature_columns = self._default_feature_columns()
             else:
                 self.feature_columns = metadata_features
         else:
             self.feature_columns = self._default_feature_columns()
-            print(f"WARNING: Falling back to default feature list with {len(self.feature_columns)} columns")
+            print(
+                f"WARNING: Falling back to default feature list with {len(self.feature_columns)} columns",
+                file=sys.stderr,
+            )
         
         self.models_loaded = True
     
@@ -135,7 +148,8 @@ class ModelInference:
         else:
             print(
                 f"WARNING: Enhanced model expects {enhanced_expected} features but received {X_scaled.shape[1]}. "
-                "Using base model prediction only."
+                "Using base model prediction only.",
+                file=sys.stderr,
             )
             final_pred = pred_base
         
