@@ -1,4 +1,5 @@
 import json
+import sys
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
@@ -61,7 +62,10 @@ def _prepare_feature_columns(model_inf: ModelInference, df: pd.DataFrame) -> Lis
             feature_cols.append(col)
 
     if missing_columns:
-        print(f"WARNING: Added {len(missing_columns)} missing features with zeros: {missing_columns[:10]}")
+        print(
+            f"WARNING: Added {len(missing_columns)} missing features with zeros: {missing_columns[:10]}",
+            file=sys.stderr,
+        )
 
     return feature_cols
 
