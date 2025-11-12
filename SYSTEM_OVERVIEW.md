@@ -97,22 +97,22 @@ ANYTIME: User Requests
 
 ## Why This Architecture?
 
-### ✓ Separation of Concerns
+###  Separation of Concerns
 - **Data pipeline:** Runs once daily (heavy processing)
 - **API:** Runs on-demand (fast inference)
 - Each can be updated independently
 
-### ✓ Cost Efficient
+###  Cost Efficient
 - Data pipeline: Only runs 5-10 minutes/day
 - API: Scales to zero when not in use
 - No always-on servers needed
 
-### ✓ Reliability
+###  Reliability
 - If API fails, data pipeline keeps running
 - If data pipeline fails, API uses yesterday's data
 - Both have independent monitoring
 
-### ✓ Fresh Data
+###  Fresh Data
 - New data every morning
 - API always uses latest available data
 - No manual updates needed
@@ -300,25 +300,25 @@ Error: API rate limit exceeded
 
 You now have a **complete, production-ready system** with:
 
-✓ **Automated Data Pipeline**
+ **Automated Data Pipeline**
 - Fetches GDELT + oil prices daily
 - Processes with same code as training
 - Saves to GCS automatically
 - Costs ~$1/month
 
-✓ **Prediction API**
+ **Prediction API**
 - Serves predictions via REST
 - Auto-loads latest data
 - Scales automatically
 - Costs ~$10-50/month
 
-✓ **Zero Manual Work**
+ **Zero Manual Work**
 - Data updates daily automatically
 - API always uses fresh data
 - Models cached in memory
 - Full monitoring and logging
 
-✓ **Ready for Frontend**
+ **Ready for Frontend**
 - REST API endpoints
 - Country contribution data
 - TypeScript integration example

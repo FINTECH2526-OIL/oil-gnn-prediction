@@ -90,15 +90,22 @@ async def predict():
         loader = get_data_loader()
         model_inf = get_model_inference()
         
+        model_inf.load_models()
+        
         df = loader.get_latest_data()
         
-        # Exclude country and date columns, plus any target/object columns
-        exclude_cols = ['country', 'date']
-        feature_cols = [c for c in df.columns 
-                       if c not in exclude_cols
-                       and 'next' not in c 
-                       and 'surprise' not in c
-                       and df[c].dtype != 'object']
+        if model_inf.feature_columns is not None:
+            feature_cols = [c for c in model_inf.feature_columns if c in df.columns]
+            missing = [c for c in model_inf.feature_columns if c not in df.columns]
+            if missing:
+                raise ValueError(f"Missing features from model: {missing[:5]}")
+        else:
+            exclude_cols = ['country', 'date']
+            feature_cols = [c for c in df.columns 
+                           if c not in exclude_cols
+                           and 'next' not in c 
+                           and 'surprise' not in c
+                           and df[c].dtype != 'object']
         
         result = model_inf.get_prediction_with_explanation(df, feature_cols)
         

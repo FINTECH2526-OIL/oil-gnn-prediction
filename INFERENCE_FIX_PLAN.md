@@ -25,11 +25,11 @@ The inference pipeline has several mismatches with the training data format:
 
 **Bug in `daily_data_pipeline_standalone.py` line 168**:
 ```python
-merged = merged.sort_values(['country_code', 'date'])  # ❌ WRONG - uses 'country_code'
+merged = merged.sort_values(['country_code', 'date'])  #  WRONG - uses 'country_code'
 ```
 Should be:
 ```python
-merged = merged.sort_values(['country', 'date'])  # ✅ CORRECT
+merged = merged.sort_values(['country', 'date'])  #  CORRECT
 ```
 
 ### 2. **Missing Feature Engineering**
@@ -75,7 +75,7 @@ def align_and_engineer_features(self, gdelt_df: pd.DataFrame, oil_df: pd.DataFra
     for col in ['wti_price', 'brent_price']:
         merged[col] = pd.to_numeric(merged[col], errors='coerce')
     
-    # ✅ FIX: Use 'country' not 'country_code'
+    #  FIX: Use 'country' not 'country_code'
     merged = merged.sort_values(['country', 'date']).reset_index(drop=True)
     
     # ... rest of feature engineering
@@ -88,10 +88,10 @@ The daily pipeline must output the same format as training data includes theme c
 Ensure it handles both column naming conventions and applies exact same feature engineering as training.
 
 ## Files to Update
-1. ✅ `gnn-backend/daily_data_pipeline_standalone.py` - Fix column names, add theme processing
-2. ✅ `gnn-backend/app/data_loader.py` - Match training feature engineering exactly  
-3. ✅ `gnn-backend/app/daily_data_pipeline.py` - Sync with standalone version
-4. ✅ `gnn-backend/app/inference.py` - Handle flexible column naming
+1.  `gnn-backend/daily_data_pipeline_standalone.py` - Fix column names, add theme processing
+2.  `gnn-backend/app/data_loader.py` - Match training feature engineering exactly  
+3.  `gnn-backend/app/daily_data_pipeline.py` - Sync with standalone version
+4.  `gnn-backend/app/inference.py` - Handle flexible column naming
 
 ## Expected Feature Count
 After fixes, inference should have same 61 features as training (post-VIF):

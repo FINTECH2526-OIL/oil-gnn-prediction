@@ -190,7 +190,7 @@ $ ./deploy_data_pipeline.sh
   ├── Pub/Sub Topic: oil-gnn-daily-trigger
   └── Scheduler Job: oil-gnn-daily-data-job
   
-  Result: Runs daily at 6 AM ET ✓
+  Result: Runs daily at 6 AM ET 
 
 Step 2: Deploy Prediction API
 ───────────────────────────────
@@ -200,13 +200,13 @@ $ ./deploy_cloudrun.sh
   ├── Docker Image → Artifact Registry
   └── Cloud Run Service: oil-gnn-api
   
-  Result: API live at https://...run.app ✓
+  Result: API live at https://...run.app 
 
 Step 3: Test
 ───────────────────────────────
 $ curl -X POST https://...run.app/predict
   ↓
-  Returns: Prediction + Countries ✓
+  Returns: Prediction + Countries 
 ```
 
 ## Monitoring Dashboard
@@ -214,7 +214,7 @@ $ curl -X POST https://...run.app/predict
 ```
 Data Pipeline Health
 ────────────────────────────────
-Last Run:        2025-11-04 06:05 AM ✓
+Last Run:        2025-11-04 06:05 AM 
 Status:          Success
 Duration:        8 minutes
 Output:          final_aligned_data_20251103.json.gz
@@ -223,7 +223,7 @@ Next Run:        2025-11-05 06:00 AM
 
 Prediction API Health
 ────────────────────────────────
-Status:          Running ✓
+Status:          Running 
 Requests (24h):  127
 Avg Response:    2.3 seconds
 Success Rate:    99.2%

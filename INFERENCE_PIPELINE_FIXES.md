@@ -2,7 +2,7 @@
 
 ## Problems Fixed
 
-### 1. ✅ Column Name Bug in `daily_data_pipeline_standalone.py`
+### 1.  Column Name Bug in `daily_data_pipeline_standalone.py`
 **Line 168**: Changed from `country_code` to `country`
 ```python
 # Before (Bug):
@@ -12,7 +12,7 @@ merged = merged.sort_values(['country_code', 'date'])
 merged = merged.sort_values(['country', 'date'])
 ```
 
-### 2. ✅ Oil Price Column Names Standardized
+### 2.  Oil Price Column Names Standardized
 **Lines 154-169**: Renamed columns to match training format
 ```python
 # Before:
@@ -22,7 +22,7 @@ merged = merged.sort_values(['country', 'date'])
 'wti_price', 'brent_price'
 ```
 
-### 3. ✅ Complete Feature Engineering Added
+### 3.  Complete Feature Engineering Added
 **Lines 170-250**: Now generates all 61+ features matching training:
 
 #### Oil Price Features (WTI & Brent):
@@ -47,13 +47,13 @@ merged = merged.sort_values(['country', 'date'])
   - `{theme}_zscore` - z-score for anomaly detection
   - `{theme}_spike` - binary spike indicator
 
-### 4. ✅ Theme Processing Added to GDELT Pipeline
+### 4.  Theme Processing Added to GDELT Pipeline
 **Lines 113-200**: New `_get_theme_category()` method categorizes GDELT themes
 - Extracts themes from `V21THEMES` column
 - Maps to 6 major categories (ENERGY, CONFLICT, SANCTIONS, TRADE, ECONOMY, POLICY)
 - Aggregates theme counts per country-day
 
-### 5. ✅ Data Loader Feature Engineering Updated
+### 5.  Data Loader Feature Engineering Updated
 **File: `gnn-backend/app/data_loader.py`**
 - Now generates ALL features matching training exactly
 - Handles both old column names (`avg_tone`, `mention_count`) and new names (`avg_sentiment`, `event_count`)
@@ -98,17 +98,17 @@ Merge on date
 
 ## Files Modified
 
-1. ✅ `gnn-backend/daily_data_pipeline_standalone.py`
+1.  `gnn-backend/daily_data_pipeline_standalone.py`
    - Fixed column name bug
    - Added complete feature engineering
    - Added theme processing
 
-2. ✅ `gnn-backend/app/data_loader.py`
+2.  `gnn-backend/app/data_loader.py`
    - Updated feature engineering to match training exactly
    - Added theme feature engineering
    - Handles both naming conventions
 
-3. ✅ `INFERENCE_FIX_PLAN.md` (Created)
+3.  `INFERENCE_FIX_PLAN.md` (Created)
    - Documentation of the problems and solutions
 
 ## Testing Checklist

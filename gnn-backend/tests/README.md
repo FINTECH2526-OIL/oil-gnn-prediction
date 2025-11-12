@@ -6,25 +6,25 @@ The test suite is organized into three levels:
 
 ### 1. Unit Tests (`test_data_pipeline.py`)
 Tests individual components of the data pipeline:
-- ✅ GDELT data fetching and processing
-- ✅ Alpha Vantage API integration
-- ✅ Feature engineering (61+ features)
-- ✅ Theme categorization
-- ✅ Column name standardization
+-  GDELT data fetching and processing
+-  Alpha Vantage API integration
+-  Feature engineering (61+ features)
+-  Theme categorization
+-  Column name standardization
 
 ### 2. Inference Tests (`test_inference.py`)
 Tests model inference pipeline:
-- ✅ Data loading from GCS
-- ✅ Feature engineering for inference
-- ✅ Model loading (XGBoost + HTG)
-- ✅ Prediction generation
-- ✅ API response format validation
+-  Data loading from GCS
+-  Feature engineering for inference
+-  Model loading (XGBoost + HTG)
+-  Prediction generation
+-  API response format validation
 
 ### 3. End-to-End Tests (`test_e2e.py`)
 Tests complete workflow:
-- ✅ Data Pipeline → GCS Storage → Inference → Predictions
-- ✅ Full integration with real APIs
-- ✅ API endpoint testing (if running locally)
+-  Data Pipeline → GCS Storage → Inference → Predictions
+-  Full integration with real APIs
+-  API endpoint testing (if running locally)
 
 ## Prerequisites
 
@@ -146,43 +146,43 @@ pytest tests/ --cov=. --cov-report=html
 Oil GNN Prediction - Test Suite
 ====================================================================
 
-✓ ALPHA_VANTAGE_API_KEY is set
-✓ GOOGLE_APPLICATION_CREDENTIALS is set
+ ALPHA_VANTAGE_API_KEY is set
+ GOOGLE_APPLICATION_CREDENTIALS is set
 
 ====================================================================
 Running Tests: all
 ====================================================================
 
 1/3: Running Unit Tests (Data Pipeline)
-✅ Fetched GDELT file: 10234 records
-✅ Processed GDELT data: 45 country-day records
-✅ Theme categorization working correctly
-✅ Feature engineering working correctly
+ Fetched GDELT file: 10234 records
+ Processed GDELT data: 45 country-day records
+ Theme categorization working correctly
+ Feature engineering working correctly
    Total features generated: 65
 
 2/3: Running Inference Tests
-✅ Loaded data from GCS: 1250 records
-✅ Feature engineering successful
+ Loaded data from GCS: 1250 records
+ Feature engineering successful
    Total features: 61
-✅ Models loaded successfully
-✅ Prediction successful
+ Models loaded successfully
+ Prediction successful
 
 3/3: Running End-to-End Tests
-📊 STEP 1: Running data pipeline
-✅ Pipeline completed successfully
+ STEP 1: Running data pipeline
+ Pipeline completed successfully
 
-💾 STEP 2: Verifying data in GCS
-✅ Data loaded from GCS
+ STEP 2: Verifying data in GCS
+ Data loaded from GCS
 
-⚙️  STEP 3: Engineering features
-✅ Features engineered
+⚙  STEP 3: Engineering features
+ Features engineered
    Total features: 61
 
-🤖 STEP 4: Loading models and making predictions
-✅ Predictions completed for 3 countries
+ STEP 4: Loading models and making predictions
+ Predictions completed for 3 countries
 
 ====================================================================
-✅ All tests passed!
+ All tests passed!
 ====================================================================
 ```
 
@@ -201,7 +201,7 @@ This is expected behavior for local development.
 
 If you see rate limit errors:
 ```
-⚠️  Alpha Vantage fetch failed: Rate limit exceeded
+️  Alpha Vantage fetch failed: Rate limit exceeded
 ```
 
 Wait 1 minute between test runs (free tier limit: 5 API calls/minute).

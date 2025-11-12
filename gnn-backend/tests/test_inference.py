@@ -36,13 +36,13 @@ class TestDataLoader:
             for col in required_cols:
                 assert col in df.columns, f"Missing required column: {col}"
             
-            print(f"✅ Loaded data from GCS: {len(df)} records")
+            print(f" Loaded data from GCS: {len(df)} records")
             print(f"   Date range: {df['date'].min()} to {df['date'].max()}")
             print(f"   Countries: {df['country'].nunique()}")
             print(f"   Columns: {len(df.columns)}")
             
         except Exception as e:
-            print(f"⚠️  Failed to load from GCS: {e}")
+            print(f"️  Failed to load from GCS: {e}")
             print("   Make sure GOOGLE_APPLICATION_CREDENTIALS is set")
             pytest.skip("GCS not accessible")
     
@@ -102,7 +102,7 @@ class TestDataLoader:
         feature_cols = [c for c in result.columns 
                        if c not in ['country', 'date', 'country_iso3', 'node_id']]
         
-        print(f"✅ Feature engineering successful")
+        print(f" Feature engineering successful")
         print(f"   Total features: {len(feature_cols)}")
         print(f"   Critical features verified: {len(critical_features)}")
         
@@ -132,7 +132,7 @@ class TestDataLoader:
         # Should have 50+ features
         assert len(feature_names) >= 50, f"Expected 50+ features, got {len(feature_names)}"
         
-        print(f"✅ Model features prepared")
+        print(f" Model features prepared")
         print(f"   Shape: {X.shape}")
         print(f"   Features: {len(feature_names)}")
         print(f"   First 10 features: {feature_names[:10]}")
@@ -157,12 +157,12 @@ class TestModelInference:
             assert inference.xgb_model is not None, "XGBoost model should be loaded"
             assert inference.htg_model is not None, "HTG model should be loaded"
             
-            print(f"✅ Models loaded successfully")
+            print(f" Models loaded successfully")
             print(f"   XGBoost model: {type(inference.xgb_model)}")
             print(f"   HTG model: {type(inference.htg_model)}")
             
         except Exception as e:
-            print(f"⚠️  Failed to load models: {e}")
+            print(f"️  Failed to load models: {e}")
             pytest.skip("Models not accessible in GCS")
     
     @pytest.mark.skipif(not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),
@@ -210,11 +210,11 @@ class TestModelInference:
             assert 'predictions' in result
             assert 'ensemble_prediction' in result
             
-            print(f"✅ Prediction successful")
+            print(f" Prediction successful")
             print(f"   Result: {json.dumps(result, indent=2)}")
             
         except Exception as e:
-            print(f"⚠️  Prediction failed: {e}")
+            print(f"️  Prediction failed: {e}")
             raise
     
     @pytest.mark.skipif(not os.environ.get('GOOGLE_APPLICATION_CREDENTIALS'),
@@ -230,29 +230,29 @@ class TestModelInference:
         
         try:
             # Step 1: Load latest data from GCS
-            print("\n1️⃣  Loading latest data from GCS...")
+            print("\n1⃣  Loading latest data from GCS...")
             df = loader.load_latest_data()
             print(f"   Loaded {len(df)} records")
             
             # Step 2: Engineer features
-            print("\n2️⃣  Engineering features...")
+            print("\n2⃣  Engineering features...")
             df_engineered = loader.engineer_features(df)
             feature_cols = [c for c in df_engineered.columns 
                           if c not in ['country', 'date', 'country_iso3', 'node_id']]
             print(f"   Generated {len(feature_cols)} features")
             
             # Step 3: Prepare for model
-            print("\n3️⃣  Preparing features for model...")
+            print("\n3⃣  Preparing features for model...")
             X, feature_names = loader.prepare_features_for_model(df_engineered)
             print(f"   Feature matrix shape: {X.shape}")
             
             # Step 4: Load models
-            print("\n4️⃣  Loading models from GCS...")
+            print("\n4⃣  Loading models from GCS...")
             inference.load_models()
             print("   Models loaded successfully")
             
             # Step 5: Make predictions for each country
-            print("\n5️⃣  Making predictions...")
+            print("\n5⃣  Making predictions...")
             countries = df_engineered['country'].unique()[:3]  # Test with 3 countries
             
             predictions = []
@@ -269,13 +269,13 @@ class TestModelInference:
                 print(f"     Ensemble: {result['ensemble_prediction']:.2f}%")
             
             print("\n" + "="*70)
-            print("✅ END-TO-END TEST PASSED")
+            print(" END-TO-END TEST PASSED")
             print("="*70)
             
             return predictions
             
         except Exception as e:
-            print(f"\n❌ E2E test failed: {e}")
+            print(f"\n E2E test failed: {e}")
             raise
 
 
@@ -309,7 +309,7 @@ class TestAPICompatibility:
         assert isinstance(result['predictions']['htg'], (int, float))
         assert isinstance(result['ensemble_prediction'], (int, float))
         
-        print("✅ Prediction format matches API schema")
+        print(" Prediction format matches API schema")
 
 
 if __name__ == '__main__':

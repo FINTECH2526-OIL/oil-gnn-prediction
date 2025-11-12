@@ -39,17 +39,17 @@ pip install -q -r tests/requirements-test.txt
 echo -e "\n${BLUE}Checking environment variables...${NC}"
 
 if [ -z "$ALPHA_VANTAGE_API_KEY" ]; then
-    echo -e "${YELLOW}⚠️  ALPHA_VANTAGE_API_KEY not set${NC}"
+    echo -e "${YELLOW}️  ALPHA_VANTAGE_API_KEY not set${NC}"
     echo -e "   Some tests will be skipped"
 else
-    echo -e "${GREEN}✓ ALPHA_VANTAGE_API_KEY is set${NC}"
+    echo -e "${GREEN} ALPHA_VANTAGE_API_KEY is set${NC}"
 fi
 
 if [ -z "$GOOGLE_APPLICATION_CREDENTIALS" ]; then
-    echo -e "${YELLOW}⚠️  GOOGLE_APPLICATION_CREDENTIALS not set${NC}"
+    echo -e "${YELLOW}️  GOOGLE_APPLICATION_CREDENTIALS not set${NC}"
     echo -e "   GCS-related tests will be skipped"
 else
-    echo -e "${GREEN}✓ GOOGLE_APPLICATION_CREDENTIALS is set${NC}"
+    echo -e "${GREEN} GOOGLE_APPLICATION_CREDENTIALS is set${NC}"
 fi
 
 # Parse command line arguments
@@ -110,11 +110,11 @@ esac
 # Check test results
 if [ $? -eq 0 ]; then
     echo -e "\n${BLUE}=====================================================================${NC}"
-    echo -e "${GREEN}✅ All tests passed!${NC}"
+    echo -e "${GREEN} All tests passed!${NC}"
     echo -e "${BLUE}=====================================================================${NC}"
 else
     echo -e "\n${BLUE}=====================================================================${NC}"
-    echo -e "${RED}❌ Some tests failed${NC}"
+    echo -e "${RED} Some tests failed${NC}"
     echo -e "${BLUE}=====================================================================${NC}"
     exit 1
 fi

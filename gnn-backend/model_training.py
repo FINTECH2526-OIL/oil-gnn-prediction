@@ -1532,6 +1532,8 @@ metadata = {
     "timestamp": datetime.utcnow().isoformat(),
     "bucket": globals().get("BUCKET_NAME", None),
     "remote_prefix": _remote_prefix,
+    "feature_columns": feature_cols,
+    "num_features": len(feature_cols),
     "metrics": {}
 }
 for metric in ["final_blend_r2", "enhanced_ensemble_r2", "base_ensemble_r2", "hierarchical_r2", "optimal_blend", "final_blend_r2"]:

@@ -397,20 +397,20 @@ done
 
 ## Security
 
-- ✓ API keys stored in environment variables (not in code)
-- ✓ Cloud Function uses service account (minimal permissions needed)
-- ✓ Data stored in private GCS bucket
-- ✓ No public endpoints (Scheduler triggers internally)
+-  API keys stored in environment variables (not in code)
+-  Cloud Function uses service account (minimal permissions needed)
+-  Data stored in private GCS bucket
+-  No public endpoints (Scheduler triggers internally)
 
 ## Summary
 
 You now have a **fully automated daily data pipeline** that:
-- ✓ Runs automatically every day at 6 AM ET
-- ✓ Fetches fresh GDELT news + oil prices
-- ✓ Applies the same feature engineering as training
-- ✓ Saves processed data to GCS
-- ✓ Integrates seamlessly with your inference API
-- ✓ Costs ~$1/month to run
-- ✓ Requires no manual intervention
+-  Runs automatically every day at 6 AM ET
+-  Fetches fresh GDELT news + oil prices
+-  Applies the same feature engineering as training
+-  Saves processed data to GCS
+-  Integrates seamlessly with your inference API
+-  Costs ~$1/month to run
+-  Requires no manual intervention
 
 **Your inference API will always have fresh data!**

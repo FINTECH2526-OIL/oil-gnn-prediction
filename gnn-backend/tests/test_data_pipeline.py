@@ -38,7 +38,7 @@ class TestGDELTFetching:
             for col in expected_cols:
                 assert col in df.columns, f"Missing column: {col}"
             
-            print(f"✅ Fetched GDELT file: {len(df)} records")
+            print(f"Fetched GDELT file: {len(df)} records")
     
     def test_process_gdelt_data(self):
         """Test GDELT data processing with real structure"""
@@ -79,7 +79,7 @@ class TestGDELTFetching:
         for col in theme_cols:
             assert col in result.columns, f"Missing theme column: {col}"
         
-        print(f"✅ Processed GDELT data: {len(result)} country-day records")
+        print(f"Processed GDELT data: {len(result)} country-day records")
         print(f"   Columns: {list(result.columns)}")
         print(f"   Sample data:\n{result.head()}")
     
@@ -103,9 +103,7 @@ class TestGDELTFetching:
             result = pipeline._get_theme_category(theme)
             assert result == expected_category, f"Theme '{theme}' should be '{expected_category}', got '{result}'"
         
-        print(f"✅ Theme categorization working correctly")
-
-
+        print(f"Theme categorization working correctly")
 class TestAlphaVantage:
     """Test Alpha Vantage API fetching"""
     
@@ -132,12 +130,12 @@ class TestAlphaVantage:
             # Check data types
             assert pd.api.types.is_datetime64_any_dtype(oil_df['date'])
             
-            print(f"✅ Fetched oil prices: {len(oil_df)} days")
+            print(f"Fetched oil prices: {len(oil_df)} days")
             print(f"   Date range: {oil_df['date'].min()} to {oil_df['date'].max()}")
             print(f"   Sample:\n{oil_df.head()}")
             
         except Exception as e:
-            print(f"⚠️  Alpha Vantage fetch failed: {e}")
+            print(f"️  Alpha Vantage fetch failed: {e}")
             print("   This is expected if API rate limit is hit")
 
 
@@ -189,7 +187,7 @@ class TestFeatureEngineering:
         
         # Count total features
         feature_cols = [c for c in result.columns if c not in ['country', 'date']]
-        print(f"✅ Feature engineering working correctly")
+        print(f"Feature engineering working correctly")
         print(f"   Total features generated: {len(feature_cols)}")
         print(f"   Feature sample: {feature_cols[:10]}")
         
@@ -207,7 +205,7 @@ class TestFeatureEngineering:
         feature_cols = [c for c in result.columns 
                        if c not in ['country', 'date', 'country_iso3', 'node_id']]
         
-        print(f"\n📊 Feature Count Analysis:")
+        print(f"\nFeature Count Analysis:")
         print(f"   Total features: {len(feature_cols)}")
         
         # Categorize features
@@ -241,17 +239,17 @@ class TestDataPipelineIntegration:
         # Test with 2 days ago (to ensure data is available)
         test_date = datetime.now() - timedelta(days=2)
         
-        print(f"\n🔄 Testing full pipeline for {test_date.date()}")
+        print(f"\nTesting full pipeline for {test_date.date()}")
         
         try:
             # This will fetch GDELT, Alpha Vantage, and engineer features
             output_path = pipeline.run_daily_update(test_date)
             
-            print(f"✅ Pipeline completed successfully!")
+            print(f"Pipeline completed successfully!")
             print(f"   Output path: {output_path}")
             
         except Exception as e:
-            print(f"⚠️  Pipeline test failed: {e}")
+            print(f"Pipeline test failed: {e}")
             print(f"   This might be expected if:")
             print(f"   - GDELT data not available for this date")
             print(f"   - Alpha Vantage rate limit hit")

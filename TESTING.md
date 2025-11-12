@@ -1,6 +1,6 @@
 # Testing Quick Start Guide
 
-## 🚀 Quick Start (30 seconds)
+##  Quick Start (30 seconds)
 
 ```bash
 cd gnn-backend
@@ -12,9 +12,9 @@ python3 tests/quick_check.py
 ./run_tests.sh all
 ```
 
-## 📋 What Gets Tested
+##  What Gets Tested
 
-### ✅ Data Pipeline Tests
+###  Data Pipeline Tests
 - Fetching GDELT data (96 files/day)
 - Fetching oil prices from Alpha Vantage
 - Processing and aggregating by country
@@ -22,20 +22,20 @@ python3 tests/quick_check.py
 - Theme extraction and categorization
 - Column name standardization
 
-### ✅ Inference Tests  
+###  Inference Tests  
 - Loading data from GCS bucket
 - Feature engineering matches training exactly
 - Model loading (XGBoost + HTG)
 - Making predictions
 - API response format
 
-### ✅ End-to-End Tests
+###  End-to-End Tests
 - Complete workflow from data fetch to prediction
 - Real API integration
 - GCS storage verification
 - Prediction validation
 
-## 🔧 Setup (First Time Only)
+##  Setup (First Time Only)
 
 ```bash
 # Set environment variables
@@ -46,7 +46,7 @@ export GOOGLE_APPLICATION_CREDENTIALS="/path/to/service-account.json"
 pip install -r tests/requirements-test.txt
 ```
 
-## 🎯 Running Tests
+##  Running Tests
 
 ```bash
 # Run everything (recommended)
@@ -64,60 +64,60 @@ pip install -r tests/requirements-test.txt
 ./run_tests.sh all -v
 ```
 
-## 📊 Expected Output
+##  Expected Output
 
 ```
 ====================================================================
 Oil GNN Prediction - Test Suite
 ====================================================================
 
-✓ ALPHA_VANTAGE_API_KEY is set
-✓ GOOGLE_APPLICATION_CREDENTIALS is set
+ ALPHA_VANTAGE_API_KEY is set
+ GOOGLE_APPLICATION_CREDENTIALS is set
 
 Running Tests: all
 ====================================================================
 
 1/3: Running Unit Tests
-✅ Fetched GDELT file: 10234 records
-✅ Processed GDELT data: 45 country-day records  
-✅ Feature engineering working correctly
+ Fetched GDELT file: 10234 records
+ Processed GDELT data: 45 country-day records  
+ Feature engineering working correctly
    Total features generated: 61
 
 2/3: Running Inference Tests
-✅ Loaded data from GCS: 1250 records
-✅ Features engineered: 61 features
-✅ Models loaded successfully
-✅ Predictions completed
+ Loaded data from GCS: 1250 records
+ Features engineered: 61 features
+ Models loaded successfully
+ Predictions completed
 
 3/3: Running End-to-End Tests
-📊 Running full pipeline for 2024-11-09
-✅ Pipeline completed successfully
-✅ Data verified in GCS
-✅ Predictions: US: 2.8%, SA: -1.2%, IQ: 1.5%
+ Running full pipeline for 2024-11-09
+ Pipeline completed successfully
+ Data verified in GCS
+ Predictions: US: 2.8%, SA: -1.2%, IQ: 1.5%
 
 ====================================================================
-✅ All tests passed!
+ All tests passed!
 ====================================================================
 ```
 
-## 🐛 Troubleshooting
+##  Troubleshooting
 
 ### Missing Environment Variables
 ```
-⚠️  ALPHA_VANTAGE_API_KEY not set
+️  ALPHA_VANTAGE_API_KEY not set
    Some tests will be skipped
 ```
 **Fix**: Set the environment variable (see Setup above)
 
 ### Alpha Vantage Rate Limit
 ```
-⚠️  Alpha Vantage fetch failed: Rate limit exceeded
+️  Alpha Vantage fetch failed: Rate limit exceeded
 ```
 **Fix**: Wait 1 minute between test runs (free tier: 5 calls/min)
 
 ### GCS Permission Error
 ```
-❌ Failed to load data: 403 Forbidden
+ Failed to load data: 403 Forbidden
 ```
 **Fix**: Check service account has `roles/storage.objectAdmin`
 
@@ -127,25 +127,25 @@ AssertionError: Expected at least 50 features, got 13
 ```
 **Fix**: This shouldn't happen after commit cab907d. If it does, re-check feature engineering code.
 
-## 📝 What the Tests Verify
+##  What the Tests Verify
 
 ### Critical Bug Fixes (from commit cab907d)
-- ✅ Column name bug fixed: `country_code` → `country`  
-- ✅ Oil price columns standardized: `value_wti` → `wti_price`
-- ✅ All 61+ features generated (was only 13 before)
-- ✅ Theme processing working correctly
-- ✅ No NaN values in feature matrix
-- ✅ Backward compatible with old column names
+-  Column name bug fixed: `country_code` → `country`  
+-  Oil price columns standardized: `value_wti` → `wti_price`
+-  All 61+ features generated (was only 13 before)
+-  Theme processing working correctly
+-  No NaN values in feature matrix
+-  Backward compatible with old column names
 
 ### Production Readiness
-- ✅ Real API integration works
-- ✅ GCS storage/retrieval works
-- ✅ Models can be loaded
-- ✅ Predictions are valid (-100% to +100%)
-- ✅ No data type errors
-- ✅ No shape mismatches
+-  Real API integration works
+-  GCS storage/retrieval works
+-  Models can be loaded
+-  Predictions are valid (-100% to +100%)
+-  No data type errors
+-  No shape mismatches
 
-## 🎓 Test Organization
+##  Test Organization
 
 ```
 gnn-backend/tests/
@@ -158,7 +158,7 @@ gnn-backend/tests/
 └── test_e2e.py                 # Integration tests
 ```
 
-## 🔄 CI/CD Integration
+##  CI/CD Integration
 
 To add to GitHub Actions:
 
@@ -183,13 +183,13 @@ jobs:
           ./run_tests.sh all
 ```
 
-## 📚 Documentation
+##  Documentation
 
 - `tests/README.md` - Complete testing guide
 - `INFERENCE_PIPELINE_FIXES.md` - Bug fixes that these tests verify
 - `DATA_PIPELINE.md` - Data pipeline documentation
 
-## ✅ Next Steps
+##  Next Steps
 
 1. **Run locally**: `./run_tests.sh all`
 2. **Fix any failures**: Review output and fix issues  

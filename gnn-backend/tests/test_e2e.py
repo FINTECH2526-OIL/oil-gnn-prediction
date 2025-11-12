@@ -48,28 +48,28 @@ class TestCompleteWorkflow:
         test_date = datetime.now() - timedelta(days=3)
         
         # Step 1: Run Data Pipeline
-        print(f"\n📊 STEP 1: Running data pipeline for {test_date.date()}")
+        print(f"\n STEP 1: Running data pipeline for {test_date.date()}")
         print("-" * 80)
         
         pipeline = DailyDataPipeline()
         
         try:
             output_path = pipeline.run_daily_update(test_date)
-            print(f"✅ Pipeline completed successfully")
+            print(f" Pipeline completed successfully")
             print(f"   Output: {output_path}")
         except Exception as e:
-            print(f"⚠️  Pipeline failed: {e}")
+            print(f"️  Pipeline failed: {e}")
             pytest.skip(f"Data pipeline failed: {e}")
         
         # Step 2: Verify Data in GCS
-        print(f"\n💾 STEP 2: Verifying data in GCS")
+        print(f"\n STEP 2: Verifying data in GCS")
         print("-" * 80)
         
         loader = DataLoader()
         
         try:
             df = loader.load_latest_data()
-            print(f"✅ Data loaded from GCS")
+            print(f" Data loaded from GCS")
             print(f"   Records: {len(df)}")
             print(f"   Date range: {df['date'].min()} to {df['date'].max()}")
             print(f"   Countries: {df['country'].unique()[:5]}")
@@ -81,11 +81,11 @@ class TestCompleteWorkflow:
             assert len(missing) == 0, f"Missing columns: {missing}"
             
         except Exception as e:
-            print(f"❌ Failed to load data: {e}")
+            print(f" Failed to load data: {e}")
             raise
         
         # Step 3: Engineer Features
-        print(f"\n⚙️  STEP 3: Engineering features")
+        print(f"\n⚙  STEP 3: Engineering features")
         print("-" * 80)
         
         try:
@@ -94,7 +94,7 @@ class TestCompleteWorkflow:
             feature_cols = [c for c in df_engineered.columns 
                           if c not in ['country', 'date', 'country_iso3', 'node_id']]
             
-            print(f"✅ Features engineered")
+            print(f" Features engineered")
             print(f"   Total features: {len(feature_cols)}")
             print(f"   Records: {len(df_engineered)}")
             
@@ -107,17 +107,17 @@ class TestCompleteWorkflow:
             assert nan_count == 0, f"Found {nan_count} NaN values in features"
             
         except Exception as e:
-            print(f"❌ Feature engineering failed: {e}")
+            print(f" Feature engineering failed: {e}")
             raise
         
         # Step 4: Prepare for Model
-        print(f"\n🔧 STEP 4: Preparing features for model")
+        print(f"\n STEP 4: Preparing features for model")
         print("-" * 80)
         
         try:
             X, feature_names = loader.prepare_features_for_model(df_engineered)
             
-            print(f"✅ Features prepared")
+            print(f" Features prepared")
             print(f"   Matrix shape: {X.shape}")
             print(f"   Feature count: {len(feature_names)}")
             print(f"   Sample features: {feature_names[:5]}")
@@ -127,18 +127,18 @@ class TestCompleteWorkflow:
             assert X.shape[0] > 0, "No data to predict on"
             
         except Exception as e:
-            print(f"❌ Feature preparation failed: {e}")
+            print(f" Feature preparation failed: {e}")
             raise
         
         # Step 5: Load Models and Make Predictions
-        print(f"\n🤖 STEP 5: Loading models and making predictions")
+        print(f"\n STEP 5: Loading models and making predictions")
         print("-" * 80)
         
         inference = ModelInference()
         
         try:
             inference.load_models()
-            print(f"✅ Models loaded")
+            print(f" Models loaded")
             
             # Make predictions for top 3 countries
             countries = df_engineered['country'].unique()[:3]
@@ -163,14 +163,14 @@ class TestCompleteWorkflow:
                 print(f"     HTG:      {result['predictions']['htg']:>6.2f}%")
                 print(f"     Ensemble: {result['ensemble_prediction']:>6.2f}%")
             
-            print(f"\n✅ Predictions completed for {len(countries)} countries")
+            print(f"\n Predictions completed for {len(countries)} countries")
             
         except Exception as e:
-            print(f"❌ Prediction failed: {e}")
+            print(f" Prediction failed: {e}")
             raise
         
         # Step 6: Validate Predictions
-        print(f"\n✓ STEP 6: Validating predictions")
+        print(f"\n STEP 6: Validating predictions")
         print("-" * 80)
         
         for pred in predictions_summary:
@@ -180,13 +180,13 @@ class TestCompleteWorkflow:
                 assert -100 <= value <= 100, f"{key} prediction {value} out of range"
                 assert not np.isnan(value), f"{key} prediction is NaN"
         
-        print(f"✅ All predictions are valid")
+        print(f" All predictions are valid")
         
         # Summary
         print("\n" + "="*80)
-        print("🎉 COMPLETE E2E WORKFLOW TEST PASSED")
+        print(" COMPLETE E2E WORKFLOW TEST PASSED")
         print("="*80)
-        print(f"\n📈 Summary:")
+        print(f"\n Summary:")
         print(f"   Test Date: {test_date.date()}")
         print(f"   Records Processed: {len(df)}")
         print(f"   Features Generated: {len(feature_cols)}")
@@ -225,11 +225,11 @@ class TestAPIEndpoint:
             assert 'predictions' in result
             assert 'ensemble_prediction' in result
             
-            print(f"✅ API endpoint working")
+            print(f" API endpoint working")
             print(f"   Response: {json.dumps(result, indent=2)}")
             
         except requests.exceptions.RequestException as e:
-            print(f"⚠️  API not accessible: {e}")
+            print(f"️  API not accessible: {e}")
             pytest.skip(f"API not running: {e}")
     
     @pytest.mark.skipif(
@@ -248,7 +248,7 @@ class TestAPIEndpoint:
             result = response.json()
             assert result['status'] == 'healthy'
             
-            print(f"✅ Health check passed")
+            print(f" Health check passed")
             print(f"   Response: {json.dumps(result, indent=2)}")
             
         except requests.exceptions.RequestException as e:

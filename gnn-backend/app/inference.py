@@ -1,6 +1,7 @@
 import joblib
 import numpy as np
 import pandas as pd
+import json
 from pathlib import Path
 from google.cloud import storage
 from .config import config
@@ -16,6 +17,7 @@ class ModelInference:
         self.client = storage.Client()
         self.bucket = self.client.bucket(config.GCS_BUCKET_NAME)
         self.models_loaded = False
+        self.feature_columns = None
         
     def download_model_artifacts(self):
         artifacts_prefix = f"{config.GCS_MODELS_PATH}{config.MODEL_RUN_ID}/artifacts/"
@@ -55,6 +57,12 @@ class ModelInference:
         self.country_models = joblib.load(model_dir / "country_models.obj")
         self.scaler_X = joblib.load(model_dir / "scaler_X.pkl")
         self.adjacency = np.load(model_dir / "adjacency.npy")
+        
+        metadata_path = model_dir / "metadata.json"
+        if metadata_path.exists():
+            with open(metadata_path, 'r') as f:
+                metadata = json.load(f)
+                self.feature_columns = metadata.get('feature_columns', None)
         
         self.models_loaded = True
     
