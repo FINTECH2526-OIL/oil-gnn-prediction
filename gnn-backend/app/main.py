@@ -1,5 +1,5 @@
 import sys
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from datetime import datetime
@@ -11,6 +11,7 @@ import gzip
 from .config import config
 from .data_loader import DataLoader
 from .inference import ModelInference
+from prediction_pipeline import HISTORY_WINDOW
 from google.cloud import storage
 
 version = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -184,7 +185,10 @@ async def get_top_contributors():
 
 
 @app.get("/history")
-async def get_prediction_history():
+async def get_prediction_history(
+    days: int = Query(30, ge=1, le=HISTORY_WINDOW),
+    start_date: Optional[str] = None,
+):
     """
     Fetch prediction history from GCS bucket.
     Returns up to 120 days of predictions with actuals when available.
@@ -211,12 +215,26 @@ async def get_prediction_history():
         
         # Sort by feature_date descending (most recent first)
         history_sorted = sorted(
-            history, 
+            history,
             key=lambda r: r.get("feature_date", ""),
-            reverse=True
+            reverse=True,
         )
-        
-        return history_sorted
+
+        filtered_history = history_sorted
+
+        if start_date:
+            try:
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+                filtered_history = [
+                    item
+                    for item in filtered_history
+                    if item.get("feature_date")
+                    and datetime.strptime(item["feature_date"], "%Y-%m-%d").date() >= start_dt
+                ]
+            except ValueError:
+                pass
+
+        return filtered_history[:days]
     
     except Exception as e:
         # Return empty list if file doesn't exist yet or any error
@@ -224,7 +242,7 @@ async def get_prediction_history():
         return []
 
 @app.post("/backfill")
-async def backfill_history(days: int = 30):
+async def backfill_history(days: int = 30, start_date: Optional[str] = None, dry_run: bool = False):
     """
     Backfill prediction history for the last N days.
     This generates historical predictions and stores them in GCS.
@@ -234,8 +252,14 @@ async def backfill_history(days: int = 30):
         import json
         
         # Run the backfill script
+        command = ["python", "/workspace/backfill_predictions.py", "--days", str(days)]
+        if start_date:
+            command.extend(["--start-date", start_date])
+        if dry_run:
+            command.append("--dry-run")
+
         result = subprocess.run(
-            ["python", "/workspace/backfill_predictions.py", "--days", str(days)],
+            command,
             capture_output=True,
             text=True,
             timeout=300  # 5 minute timeout

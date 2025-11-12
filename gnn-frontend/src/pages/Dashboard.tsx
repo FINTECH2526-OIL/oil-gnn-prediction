@@ -9,9 +9,8 @@ import {
     Tooltip,
     Legend,
 } from 'chart.js';
-import type { ChartOptions } from 'chart.js';
 import { Line } from 'react-chartjs-2';
-import { getPredictionHistory, checkHealth } from '../services/api';
+import { getPredictionHistory, checkHealth, triggerBackfill } from '../services/api';
 import type { PredictionRecord } from '../types/api';
 
 ChartJS.register(
@@ -25,6 +24,8 @@ ChartJS.register(
 );
 
 type DateRange = 7 | 14 | 30;
+const PREDICTION_BUFFER_DAYS = 1;
+const DEFAULT_HISTORY_WINDOW = 30 + PREDICTION_BUFFER_DAYS;
 
 export default function Dashboard() {
     const [history, setHistory] = useState<PredictionRecord[]>([]);
@@ -32,6 +33,7 @@ export default function Dashboard() {
     const [error, setError] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<DateRange>(30);
     const [apiStatus, setApiStatus] = useState<'healthy' | 'unhealthy' | 'checking'>('checking');
+    const [backfillStatus, setBackfillStatus] = useState<'idle' | 'running' | 'failed' | 'success'>('idle');
 
     useEffect(() => {
         const fetchData = async () => {
@@ -48,7 +50,40 @@ export default function Dashboard() {
                 }
 
                 // Fetch prediction history
-                const data = await getPredictionHistory();
+                const today = new Date();
+                const startDate = new Date(today);
+                startDate.setDate(startDate.getDate() - 30);
+                const startDateIso = startDate.toISOString().split('T')[0];
+
+                let data = await getPredictionHistory({
+                    days: DEFAULT_HISTORY_WINDOW,
+                    startDate: startDateIso,
+                });
+
+                const latestFeatureDate = data[0]?.feature_date
+                    ? new Date(data[0].feature_date)
+                    : null;
+                const hasRecentCoverage = latestFeatureDate ? latestFeatureDate >= startDate : false;
+                const hasSufficientRecords = data.length >= DEFAULT_HISTORY_WINDOW;
+
+                if (!hasRecentCoverage || !hasSufficientRecords) {
+                    try {
+                        setBackfillStatus('running');
+                        await triggerBackfill({
+                            days: DEFAULT_HISTORY_WINDOW,
+                            startDate: startDateIso,
+                        });
+                        setBackfillStatus('success');
+                        data = await getPredictionHistory({
+                            days: DEFAULT_HISTORY_WINDOW,
+                            startDate: startDateIso,
+                        });
+                    } catch (backfillError) {
+                        console.error('Backfill attempt failed', backfillError);
+                        setBackfillStatus('failed');
+                    }
+                }
+
                 setHistory(data);
             } catch (err) {
                 setError(err instanceof Error ? err.message : 'Failed to load data');
@@ -61,32 +96,32 @@ export default function Dashboard() {
         fetchData();
     }, []);
 
-    // Filter data by date range
-    const filteredHistory = history.slice(0, dateRange);
+    // Filter data by date range (include buffer for the newest prediction)
+    const filteredHistory: PredictionRecord[] = history.slice(0, dateRange + PREDICTION_BUFFER_DAYS);
 
     // Calculate metrics
     const latestPrediction = history[0];
-    const recordsWithActuals = filteredHistory.filter((r) => r.actual_close !== undefined);
+    const recordsWithActuals = filteredHistory.filter((record) => record.actual_close !== undefined);
     const avgError = recordsWithActuals.length > 0
-        ? recordsWithActuals.reduce((sum, r) => sum + Math.abs(r.error_delta || 0), 0) / recordsWithActuals.length
+        ? recordsWithActuals.reduce<number>((sum, record) => sum + Math.abs(record.error_delta ?? 0), 0) / recordsWithActuals.length
         : 0;
 
     // Chart data
     const chartData = {
-        labels: filteredHistory.map((r) =>
-            new Date(r.prediction_for_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+        labels: filteredHistory.map((record) =>
+            new Date(record.prediction_for_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
         ).reverse(),
         datasets: [
             {
                 label: 'Predicted Close Price',
-                data: filteredHistory.map((r) => r.predicted_close).reverse(),
+                data: filteredHistory.map((record) => record.predicted_close).reverse(),
                 borderColor: 'rgb(59, 130, 246)',
                 backgroundColor: 'rgba(59, 130, 246, 0.1)',
                 tension: 0.4,
             },
             {
                 label: 'Actual Close Price',
-                data: filteredHistory.map((r) => r.actual_close).reverse(),
+                data: filteredHistory.map((record) => record.actual_close).reverse(),
                 borderColor: 'rgb(16, 185, 129)',
                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                 tension: 0.4,
@@ -95,7 +130,7 @@ export default function Dashboard() {
         ],
     };
 
-    const chartOptions: ChartOptions<'line'> = {
+    const chartOptions = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
@@ -112,7 +147,7 @@ export default function Dashboard() {
             },
             tooltip: {
                 callbacks: {
-                    label: (context) => {
+                    label: (context: { dataset: { label?: string }; parsed: { y: number } }) => {
                         const label = context.dataset.label || '';
                         const value = context.parsed.y;
                         return `${label}: $${value.toFixed(2)}`;
@@ -160,6 +195,16 @@ export default function Dashboard() {
                             API Status: {apiStatus === 'healthy' ? 'Healthy' : 'Unhealthy'}
                         </span>
                     </div>
+                    {backfillStatus === 'running' && (
+                        <div className="mt-2 text-sm text-blue-600">
+                            Backfilling recent history, please wait...
+                        </div>
+                    )}
+                    {backfillStatus === 'failed' && (
+                        <div className="mt-2 text-sm text-red-600">
+                            Unable to backfill recent history automatically. Please try again later.
+                        </div>
+                    )}
                 </div>
 
                 {/* Metrics Cards */}

@@ -34,8 +34,16 @@ export async function checkHealth(): Promise<{
 }
 
 // Get prediction history
-export async function getPredictionHistory(): Promise<PredictionRecord[]> {
-  return fetchApi<PredictionRecord[]>('/history');
+export async function getPredictionHistory(options?: {
+  days?: number;
+  startDate?: string;
+}): Promise<PredictionRecord[]> {
+  const params = new URLSearchParams();
+  if (options?.days) params.set('days', options.days.toString());
+  if (options?.startDate) params.set('start_date', options.startDate);
+
+  const path = params.toString() ? `/history?${params.toString()}` : '/history';
+  return fetchApi<PredictionRecord[]>(path);
 }
 
 // Get latest prediction
@@ -52,4 +60,16 @@ export async function getLatestPrediction(): Promise<{
   }>;
 }> {
   return fetchApi('/predict', { method: 'POST' });
+}
+
+export async function triggerBackfill(options: {
+  days: number;
+  startDate?: string;
+  dryRun?: boolean;
+}): Promise<{ [key: string]: unknown }> {
+  const params = new URLSearchParams({ days: options.days.toString() });
+  if (options.startDate) params.set('start_date', options.startDate);
+  if (options.dryRun) params.set('dry_run', 'true');
+
+  return fetchApi(`/backfill?${params.toString()}`, { method: 'POST' });
 }
