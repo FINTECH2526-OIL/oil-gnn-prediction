@@ -103,11 +103,11 @@ class DataLoader:
         # GDELT/Event features - check for both naming conventions
         if 'avg_sentiment' in df.columns:
             for lag in [1, 2, 3, 5, 7]:
-                df[f'avg_sentiment_lag{lag}'] = df.groupby('country_iso3')['avg_sentiment'].shift(lag)
+                df[f'sentiment_lag{lag}'] = df.groupby('country_iso3')['avg_sentiment'].shift(lag)
         elif 'avg_tone' in df.columns:
             df['avg_sentiment'] = df['avg_tone']
             for lag in [1, 2, 3, 5, 7]:
-                df[f'avg_sentiment_lag{lag}'] = df.groupby('country_iso3')['avg_sentiment'].shift(lag)
+                df[f'sentiment_lag{lag}'] = df.groupby('country_iso3')['avg_sentiment'].shift(lag)
         
         if 'tone_std' in df.columns:
             for lag in [1, 7]:
@@ -120,6 +120,23 @@ class DataLoader:
             df['event_count'] = df['mention_count']
             for lag in [1, 7]:
                 df[f'event_count_lag{lag}'] = df.groupby('country_iso3')['event_count'].shift(lag)
+        
+        # Price spread and correlation features
+        if 'wti_price' in df.columns and 'brent_price' in df.columns:
+            df['spread_wti_brent'] = df['wti_price'] - df['brent_price']
+            
+            # Rolling correlation - fixed to avoid multi-column issues
+            corr_values = []
+            for country in df['country_iso3'].unique():
+                country_data = df[df['country_iso3'] == country].copy()
+                country_corr = country_data['wti_return'].rolling(20, min_periods=10).corr(country_data['brent_return'])
+                corr_values.extend(country_corr.tolist())
+            df['correlation_20d'] = corr_values
+            
+            # Volatility ratio
+            wti_vol = df.groupby('country_iso3')['wti_return'].transform(lambda x: x.rolling(20, min_periods=10).std())
+            brent_vol = df.groupby('country_iso3')['brent_return'].transform(lambda x: x.rolling(20, min_periods=10).std())
+            df['volatility_ratio'] = wti_vol / (brent_vol + 1e-8)
         
         # Theme features - add change and lag features
         theme_cols = [c for c in df.columns if c.startswith('theme_')]
