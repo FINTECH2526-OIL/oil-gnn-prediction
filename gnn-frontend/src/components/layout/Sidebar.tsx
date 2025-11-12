@@ -3,7 +3,6 @@ import { useUIStore } from '../../store';
 import { 
   BarChart3, 
   Network, 
-  Layers, 
   Activity, 
   Globe, 
   TrendingUp,

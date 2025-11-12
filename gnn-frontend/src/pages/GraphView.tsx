@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from 'react';
-import cytoscape, { Core, EdgeDefinition, NodeDefinition } from 'cytoscape';
+import cytoscape from 'cytoscape';
+import type { Core, EdgeDefinition, NodeDefinition } from 'cytoscape';
 import { getPredictionHistory } from '../services/api';
 import type { PredictionRecord } from '../types/api';
 
@@ -54,7 +55,7 @@ export default function GraphView() {
         const edges: EdgeDefinition[] = [];
 
         // Add top contributors as nodes
-        record.top_contributors.forEach((contributor, idx) => {
+        record.top_contributors.forEach((contributor: any, idx: number) => {
             nodes.push({
                 data: {
                     id: `country-${idx}`,
@@ -102,7 +103,7 @@ export default function GraphView() {
                 {
                     selector: 'node[type="contributor"]',
                     style: {
-                        'background-color': (ele) => {
+                        'background-color': (ele: any) => {
                             const contribution = ele.data('contribution');
                             return contribution >= 0 ? '#10b981' : '#ef4444';
                         },
@@ -110,11 +111,11 @@ export default function GraphView() {
                         color: '#fff',
                         'text-valign': 'center',
                         'text-halign': 'center',
-                        width: (ele) => {
+                        width: (ele: any) => {
                             const percentage = Math.abs(ele.data('percentage'));
                             return Math.max(30, Math.min(60, percentage * 3));
                         },
-                        height: (ele) => {
+                        height: (ele: any) => {
                             const percentage = Math.abs(ele.data('percentage'));
                             return Math.max(30, Math.min(60, percentage * 3));
                         },
@@ -127,15 +128,15 @@ export default function GraphView() {
                 {
                     selector: 'edge',
                     style: {
-                        width: (ele) => {
+                        width: (ele: any) => {
                             const weight = ele.data('weight');
                             return Math.max(1, Math.min(8, weight / 3));
                         },
-                        'line-color': (ele) => {
+                        'line-color': (ele: any) => {
                             const contribution = ele.data('contribution');
                             return contribution >= 0 ? '#10b981' : '#ef4444';
                         },
-                        'target-arrow-color': (ele) => {
+                        'target-arrow-color': (ele: any) => {
                             const contribution = ele.data('contribution');
                             return contribution >= 0 ? '#10b981' : '#ef4444';
                         },
@@ -154,7 +155,7 @@ export default function GraphView() {
         });
 
         // Add tooltips on hover
-        cyRef.current.on('mouseover', 'node[type="contributor"]', (event) => {
+        cyRef.current.on('mouseover', 'node[type="contributor"]', (event: any) => {
             const node = event.target;
             const data = node.data();
             node.style({
@@ -165,7 +166,7 @@ export default function GraphView() {
             console.log(`${data.label}: ${data.contribution >= 0 ? '+' : ''}$${data.contribution.toFixed(3)} (${data.percentage.toFixed(2)}%)`);
         });
 
-        cyRef.current.on('mouseout', 'node[type="contributor"]', (event) => {
+        cyRef.current.on('mouseout', 'node[type="contributor"]', (event: any) => {
             event.target.style({
                 'border-width': 0,
             });

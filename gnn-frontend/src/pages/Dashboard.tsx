@@ -8,8 +8,8 @@ import {
     Title,
     Tooltip,
     Legend,
-    ChartOptions,
 } from 'chart.js';
+import type { ChartOptions } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import { getPredictionHistory, checkHealth } from '../services/api';
 import type { PredictionRecord } from '../types/api';
@@ -217,8 +217,8 @@ export default function Dashboard() {
                                     key={days}
                                     onClick={() => setDateRange(days)}
                                     className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${dateRange === days
-                                            ? 'bg-blue-600 text-white'
-                                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                                         }`}
                                 >
                                     {days}D
