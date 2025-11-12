@@ -9,8 +9,12 @@ COPY package*.json ./
 # Install dependencies
 RUN npm ci
 
-# Copy source code
+# Copy source code (including .env)
 COPY . .
+
+# Set build-time environment variable for Vite
+ARG VITE_API_URL=https://oil-gnn-api-1072886277511.us-central1.run.app
+ENV VITE_API_URL=${VITE_API_URL}
 
 # Build the app (Vite outputs to /dist)
 RUN npm run build
@@ -28,9 +32,9 @@ RUN echo 'server { \
     root /usr/share/nginx/html; \
     index index.html; \
     location / { \
-        try_files $uri $uri/ /index.html; \
+    try_files $uri $uri/ /index.html; \
     } \
-}' > /etc/nginx/conf.d/default.conf
+    }' > /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 
