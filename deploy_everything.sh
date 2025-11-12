@@ -65,17 +65,17 @@ echo ""
 echo "Step 6: Creating Cloud Scheduler job..."
 gcloud scheduler jobs create pubsub oil-gnn-daily-data-job \
   --location=$GCP_REGION \
-  --schedule="0 6 * * *" \
+  --schedule="15 7 * * TUE-SAT" \
   --topic=oil-gnn-daily-trigger \
   --message-body='{"trigger":"daily"}' \
-  --time-zone="America/New_York" \
+  --time-zone="Asia/Singapore" \
   --project=$GCP_PROJECT_ID || \
 gcloud scheduler jobs update pubsub oil-gnn-daily-data-job \
   --location=$GCP_REGION \
-  --schedule="0 6 * * *" \
+  --schedule="15 7 * * TUE-SAT" \
   --topic=oil-gnn-daily-trigger \
   --message-body='{"trigger":"daily"}' \
-  --time-zone="America/New_York" \
+  --time-zone="Asia/Singapore" \
   --project=$GCP_PROJECT_ID
 
 echo ""

@@ -6,7 +6,7 @@ The daily data pipeline automatically fetches, processes, and aligns new data ev
 
 ## What It Does
 
-Every day at 6:00 AM ET (after oil markets close), the pipeline:
+Every trading day at 7:15 AM Asia/Singapore (≈6:15 PM Eastern on the prior U.S. trading day), the pipeline:
 
 1. **Fetches GDELT News Data** - Downloads the previous day's global news events
 2. **Fetches Oil Prices** - Gets latest WTI and Brent prices from Alpha Vantage
@@ -29,7 +29,7 @@ Every day at 6:00 AM ET (after oil markets close), the pipeline:
 
 ```
 ┌─────────────────┐
-│  Cloud Scheduler │  (Triggers daily at 6 AM ET)
+│  Cloud Scheduler │  (Triggers Tue–Sat at 7:15 AM SGT)
 └────────┬────────┘
          │
          ▼
@@ -94,9 +94,9 @@ That's it! The pipeline will now run automatically every day.
 
 ## Schedule
 
-- **Trigger Time:** 6:00 AM Eastern Time (11:00 AM UTC)
-- **Frequency:** Daily
-- **Why 6 AM ET?** Oil markets close at 5:00 PM ET, so we fetch the previous day's complete data
+- **Trigger Time:** 7:15 AM Asia/Singapore (previous U.S. day 6:15 PM Eastern)
+- **Frequency:** Tuesday through Saturday (covers Monday–Friday trading sessions)
+- **Why this window?** Oil markets close at 5:00 PM ET; waiting 75 minutes ensures Alpha Vantage and GDELT have published the full daily snapshots while still delivering results before the next Asian session opens.
 
 ## Manual Execution
 

@@ -4,13 +4,43 @@ import numpy as np
 import requests
 import zipfile
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
 import time
 import gzip
 import json
 from typing import List, Dict, Optional
 from google.cloud import storage
 import pycountry
+
+SGT = ZoneInfo("Asia/Singapore")
+
+
+def _to_business_day(target: date) -> date:
+    """Shift the provided date back to the most recent weekday."""
+    while target.weekday() >= 5:  # 5 = Saturday, 6 = Sunday
+        target -= timedelta(days=1)
+    return target
+
+
+def _resolve_target_datetime(requested: Optional[datetime] = None) -> datetime:
+    """Determine which trading day to process relative to Singapore time."""
+    if requested is not None:
+        if isinstance(requested, datetime):
+            if requested.tzinfo is not None:
+                requested = requested.astimezone(SGT)
+            else:
+                requested = requested.replace(tzinfo=SGT)
+            candidate = requested.date()
+        else:
+            candidate = requested
+    else:
+        now_sgt = datetime.now(tz=SGT)
+        candidate = (now_sgt - timedelta(days=1)).date()
+
+    candidate = _to_business_day(candidate)
+    return datetime.combine(candidate, datetime.min.time(), tzinfo=SGT)
+
 
 class DailyDataPipeline:
     def __init__(self):
@@ -280,16 +310,19 @@ class DailyDataPipeline:
         
         return merged
     
-    def run_daily_update(self, target_date: datetime) -> str:
+    def run_daily_update(self, target_date: Optional[datetime] = None) -> str:
         """Run the complete daily data pipeline"""
-        print(f"Starting daily update for {target_date.date()}")
+        target_dt = _resolve_target_datetime(target_date)
+        target_dt_naive = target_dt.replace(tzinfo=None)
+
+        print(f"Starting daily update for {target_dt.date()}")
         
         # Fetch GDELT data
         print("Fetching GDELT data...")
-        gdelt_raw = self.fetch_gdelt_for_date(target_date)
+        gdelt_raw = self.fetch_gdelt_for_date(target_dt_naive)
         
         if gdelt_raw.empty:
-            raise Exception(f"No GDELT data found for {target_date.date()}")
+            raise Exception(f"No GDELT data found for {target_dt.date()}")
         
         print(f"Fetched {len(gdelt_raw)} GDELT records")
         
@@ -303,8 +336,8 @@ class DailyDataPipeline:
         print(f"Processed to {len(gdelt_processed)} country-day records")
         
         # Fetch oil prices (need a range for lag features)
-        start_date = target_date - timedelta(days=60)
-        end_date = target_date + timedelta(days=1)
+        start_date = target_dt_naive - timedelta(days=60)
+        end_date = target_dt_naive + timedelta(days=1)
         
         print("Fetching oil prices...")
         oil_data = self.fetch_oil_prices(start_date, end_date)
@@ -324,7 +357,7 @@ class DailyDataPipeline:
         print(f"Final dataset: {len(final_data)} records")
         
         # Save to GCS
-        date_str = target_date.strftime('%Y%m%d')
+        date_str = target_dt.date().strftime('%Y%m%d')
         output_filename = f"final_aligned_data_{date_str}.json.gz"
         output_path = f"{self.gcs_processed_path}{output_filename}"
         
@@ -337,7 +370,6 @@ class DailyDataPipeline:
         # Upload to GCS
         blob = self.bucket.blob(output_path)
         blob.upload_from_string(compressed_data, content_type='application/gzip')
-        
-        print(f"Successfully saved to gs://{self.bucket.name}/{output_path}")
-        
-        return output_path
+    print(f"Successfully saved to gs://{self.bucket.name}/{output_path}")
+
+    return output_path

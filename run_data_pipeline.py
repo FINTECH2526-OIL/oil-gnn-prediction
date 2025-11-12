@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'gnn-backend'))
 
 from app.daily_data_pipeline import DailyDataPipeline
+from prediction_pipeline import run_daily_inference
 
 def main():
     import argparse
@@ -27,11 +28,19 @@ def main():
     
     try:
         output_path = pipeline.run_daily_update(target_date)
+        inference_result = run_daily_inference()
         
         print("=" * 60)
         print("SUCCESS!")
         print(f"Data saved to: gs://{os.environ.get('GCS_BUCKET_NAME', 'gdelt_raw_3_years')}/{output_path}")
-        print(f"Target date: {target_date.date()}")
+        record = inference_result.get('record', {})
+        feature_date = record.get('feature_date')
+        predicted_close = record.get('predicted_close')
+        predicted_delta = record.get('predicted_delta')
+        print(f"Processed feature date: {feature_date}")
+        print(f"Predicted delta: {predicted_delta}")
+        print(f"Predicted next close: {predicted_close}")
+        print(f"History entries: {inference_result.get('history_length')} (updated {inference_result.get('updated_outcomes')} outcomes)")
         
     except Exception as e:
         print("=" * 60)

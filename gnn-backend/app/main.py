@@ -5,10 +5,13 @@ from pydantic import BaseModel
 from datetime import datetime
 from typing import Optional, Dict, List
 import traceback
+import json
+import gzip
 
 from .config import config
 from .data_loader import DataLoader
 from .inference import ModelInference
+from google.cloud import storage
 
 version = f"{sys.version_info.major}.{sys.version_info.minor}"
 
@@ -178,4 +181,45 @@ async def get_top_contributors():
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get contributors: {str(e)}")
+
+
+@app.get("/history")
+async def get_prediction_history():
+    """
+    Fetch prediction history from GCS bucket.
+    Returns up to 120 days of predictions with actuals when available.
+    """
+    try:
+        client = storage.Client()
+        bucket = client.bucket(config.GCS_BUCKET_NAME)
+        history_blob_path = f"{config.GCS_PROCESSED_PATH}predictions/history.json"
+        
+        blob = bucket.blob(history_blob_path)
+        
+        if not blob.exists():
+            return []
+        
+        content = blob.download_as_text()
+        history = json.loads(content)
+        
+        # Ensure it's a list
+        if isinstance(history, dict) and "records" in history:
+            history = history["records"]
+        
+        if not isinstance(history, list):
+            return []
+        
+        # Sort by feature_date descending (most recent first)
+        history_sorted = sorted(
+            history, 
+            key=lambda r: r.get("feature_date", ""),
+            reverse=True
+        )
+        
+        return history_sorted
+    
+    except Exception as e:
+        # Return empty list if file doesn't exist yet or any error
+        print(f"Error fetching history: {e}")
+        return []
 

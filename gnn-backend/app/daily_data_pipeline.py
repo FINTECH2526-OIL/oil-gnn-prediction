@@ -4,7 +4,8 @@ import numpy as np
 import requests
 import zipfile
 import io
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
 import time
 import gzip
 import json
@@ -13,6 +14,32 @@ from google.cloud import storage
 import pycountry
 
 from .config import config
+
+SGT = ZoneInfo("Asia/Singapore")
+
+
+def _to_business_day(target: date) -> date:
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    return target
+
+
+def _resolve_target_datetime(requested: Optional[datetime] = None) -> datetime:
+    if requested is not None:
+        if isinstance(requested, datetime):
+            if requested.tzinfo is not None:
+                requested = requested.astimezone(SGT)
+            else:
+                requested = requested.replace(tzinfo=SGT)
+            candidate = requested.date()
+        else:
+            candidate = requested
+    else:
+        now_sgt = datetime.now(tz=SGT)
+        candidate = (now_sgt - timedelta(days=1)).date()
+
+    candidate = _to_business_day(candidate)
+    return datetime.combine(candidate, datetime.min.time(), tzinfo=SGT)
 
 class DailyDataPipeline:
     def __init__(self):
@@ -323,22 +350,22 @@ class DailyDataPipeline:
         return df
     
     def run_daily_update(self, target_date: Optional[datetime] = None) -> str:
-        if target_date is None:
-            target_date = datetime.now() - timedelta(days=1)
-        
-        print(f"Running daily data pipeline for {target_date.date()}")
-        
+        target_dt = _resolve_target_datetime(target_date)
+        target_dt_naive = target_dt.replace(tzinfo=None)
+
+        print(f"Running daily data pipeline for {target_dt.date()}")
+
         oil_data = self.fetch_oil_prices(days_back=90)
         print(f"Fetched oil prices: {len(oil_data)} days")
         
         gdelt_data_list = []
         for days_ago in range(30, -1, -1):
-            date = target_date - timedelta(days=days_ago)
-            print(f"Fetching GDELT data for {date.date()}...")
+            current_date = target_dt_naive - timedelta(days=days_ago)
+            print(f"Fetching GDELT data for {current_date.date()}...")
             
-            gdelt_df = self.fetch_gdelt_for_date(date)
+            gdelt_df = self.fetch_gdelt_for_date(current_date)
             if not gdelt_df.empty:
-                processed = self.process_gdelt_data(gdelt_df, date)
+                processed = self.process_gdelt_data(gdelt_df, current_date)
                 if processed:
                     gdelt_data_list.append(processed)
             
@@ -351,7 +378,7 @@ class DailyDataPipeline:
         if final_df.empty:
             raise ValueError("No data generated from pipeline")
         
-        output_filename = f"final_aligned_data_{target_date.strftime('%Y%m%d')}.json.gz"
+        output_filename = f"final_aligned_data_{target_dt.date().strftime('%Y%m%d')}.json.gz"
         output_path = f"{config.GCS_PROCESSED_PATH}{output_filename}"
         
         records = final_df.to_dict('records')
