@@ -10,6 +10,7 @@ import {
     Legend,
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
+import type { ChartOptions } from 'chart.js';
 import { getPredictionHistory, checkHealth, triggerBackfill } from '../services/api';
 import type { PredictionRecord } from '../types/api';
 
@@ -130,7 +131,7 @@ export default function Dashboard() {
         ],
     };
 
-    const chartOptions = {
+    const chartOptions: ChartOptions<'line'> = {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
@@ -142,7 +143,7 @@ export default function Dashboard() {
                 text: 'WTI Crude Oil Price Predictions vs Actuals',
                 font: {
                     size: 16,
-                    weight: 'bold',
+                    weight: 'bold' as const,
                 },
             },
             tooltip: {
