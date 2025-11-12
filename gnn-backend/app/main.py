@@ -223,3 +223,35 @@ async def get_prediction_history():
         print(f"Error fetching history: {e}")
         return []
 
+@app.post("/backfill")
+async def backfill_history(days: int = 30):
+    """
+    Backfill prediction history for the last N days.
+    This generates historical predictions and stores them in GCS.
+    """
+    try:
+        import subprocess
+        import json
+        
+        # Run the backfill script
+        result = subprocess.run(
+            ["python", "/workspace/backfill_predictions.py", "--days", str(days)],
+            capture_output=True,
+            text=True,
+            timeout=300  # 5 minute timeout
+        )
+        
+        if result.returncode == 0:
+            return json.loads(result.stdout)
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Backfill failed: {result.stderr}"
+            )
+    
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=500, detail="Backfill timeout after 5 minutes")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Backfill error: {str(e)}")
+
+

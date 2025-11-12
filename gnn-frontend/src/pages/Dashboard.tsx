@@ -24,7 +24,7 @@ ChartJS.register(
     Legend
 );
 
-type DateRange = 7 | 14 | 30 | 60 | 90;
+type DateRange = 7 | 14 | 30;
 
 export default function Dashboard() {
     const [history, setHistory] = useState<PredictionRecord[]>([]);
@@ -212,7 +212,7 @@ export default function Dashboard() {
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-xl font-semibold text-gray-900">Price Prediction Chart</h2>
                         <div className="flex gap-2">
-                            {([7, 14, 30, 60, 90] as DateRange[]).map((days) => (
+                            {([7, 14, 30] as DateRange[]).map((days) => (
                                 <button
                                     key={days}
                                     onClick={() => setDateRange(days)}

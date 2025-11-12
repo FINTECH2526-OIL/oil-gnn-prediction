@@ -1,10 +1,10 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useUIStore } from '../../store';
-import { 
-  BarChart3, 
-  Network, 
-  Activity, 
-  Globe, 
+import {
+  BarChart3,
+  Network,
+  Activity,
+  Globe,
   TrendingUp,
   ChevronLeft,
   Info,
@@ -57,10 +57,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <aside 
-      className={`glass-dark border-r border-white/10 transition-all duration-300 ${
-        sidebarCollapsed ? 'w-16' : 'w-64'
-      } ${className}`}
+    <aside
+      className={`glass-dark border-r border-white/10 transition-all duration-300 ${sidebarCollapsed ? 'w-16' : 'w-64'
+        } ${className}`}
     >
       <div className="flex flex-col h-full overflow-hidden">
         {/* Collapse toggle */}
@@ -70,11 +69,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
             className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
             aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
-            <ChevronLeft 
-              size={18} 
-              className={`transition-transform duration-200 ${
-                sidebarCollapsed ? 'rotate-180' : ''
-              }`} 
+            <ChevronLeft
+              size={18}
+              className={`transition-transform duration-200 ${sidebarCollapsed ? 'rotate-180' : ''
+                }`}
             />
           </button>
         </div>
@@ -85,7 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
             {navigationItems.map((item) => {
               const Icon = item.icon;
               const active = isActive(item.path);
-              
+
               return (
                 <button
                   key={item.path}
@@ -94,7 +92,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
                   title={sidebarCollapsed ? item.label : undefined}
                 >
                   <Icon size={20} className="flex-shrink-0" />
-                  
+
                   {!sidebarCollapsed && (
                     <>
                       <div className="flex-1 text-left ml-3">
@@ -133,9 +131,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
                           <Icon size={16} className="text-primary-400" />
                           <span className="text-xs text-gray-400">{stat.label}</span>
                         </div>
-                        <span className={`text-xs ${
-                          stat.change.startsWith('+') ? 'text-green-400' : 'text-red-400'
-                        }`}>
+                        <span className={`text-xs ${stat.change.startsWith('+') ? 'text-green-400' : 'text-red-400'
+                          }`}>
                           {stat.change}
                         </span>
                       </div>
@@ -164,7 +161,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
                     <p className="text-xs text-gray-500 mt-1">2m ago</p>
                   </div>
                 </div>
-                
+
                 <div className="flex items-start space-x-3 p-3 glass rounded-lg">
                   <div className="p-1 bg-blue-500/20 rounded">
                     <Activity size={12} className="text-blue-400" />
