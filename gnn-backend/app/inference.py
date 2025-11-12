@@ -127,10 +127,17 @@ class ModelInference:
         X_scaled = self.scaler_X.transform(X)
         
         pred_base = self.model_base.predict(X_scaled)
-        pred_enhanced = self.model_enhanced.predict(X_scaled)
-        
-        optimal_weight = 0.5
-        final_pred = optimal_weight * pred_base + (1 - optimal_weight) * pred_enhanced
+        enhanced_expected = getattr(self.model_enhanced, 'n_features_in_', X_scaled.shape[1])
+        if enhanced_expected == X_scaled.shape[1]:
+            pred_enhanced = self.model_enhanced.predict(X_scaled)
+            optimal_weight = 0.5
+            final_pred = optimal_weight * pred_base + (1 - optimal_weight) * pred_enhanced
+        else:
+            print(
+                f"WARNING: Enhanced model expects {enhanced_expected} features but received {X_scaled.shape[1]}. "
+                "Using base model prediction only."
+            )
+            final_pred = pred_base
         
         return final_pred
     
