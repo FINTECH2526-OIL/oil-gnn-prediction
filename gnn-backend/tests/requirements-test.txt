@@ -1,0 +1,10 @@
+# Test dependencies
+pytest>=7.4.0
+pytest-cov>=4.1.0
+pytest-timeout>=2.1.0
+requests>=2.31.0
+
+# Already in main requirements.txt but needed for tests
+pandas>=2.0.0
+numpy>=1.24.0
+google-cloud-storage>=2.10.0

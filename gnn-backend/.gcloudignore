@@ -1,0 +1,8 @@
+# Ignore files not needed for Cloud Function deployment
+model_training.py
+data_engineering.py
+visualize.py
+python3.11-slim.dockerfile
+__pycache__/
+*.pyc
+.DS_Store

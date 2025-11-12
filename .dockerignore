@@ -1,0 +1,16 @@
+.git
+.gitignore
+*.md
+README.md
+TESTING.md
+deployment/
+gnn-frontend/
+*.sh
+.env
+.venv
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+htmlcov/
+.coverage

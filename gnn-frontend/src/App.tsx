@@ -1,7 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Layout } from './components/layout/Layout';
-import { Dashboard } from './pages/Dashboard';
-import { GraphView } from './pages/GraphView';
+import Dashboard from './pages/Dashboard';
+import GraphView from './pages/GraphView';
 
 /**
  * Main App component with routing configuration
@@ -24,11 +24,11 @@ function App() {
           <Route path="/" element={<Layout />}>
             {/* Redirect root to dashboard */}
             <Route index element={<Navigate to="/dashboard" replace />} />
-            
+
             {/* Main application routes */}
             <Route path="dashboard" element={<Dashboard />} />
             <Route path="graph" element={<GraphView />} />
-            
+
             {/* Catch-all route - redirect to dashboard */}
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
