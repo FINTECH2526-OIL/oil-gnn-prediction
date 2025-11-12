@@ -66,42 +66,22 @@ def _prepare_feature_columns(model_inf: ModelInference, df: pd.DataFrame) -> Lis
     return feature_cols
 
 
-def run_daily_inference(target_date: Optional[datetime] = None) -> Dict:
-    """Load latest engineered data, execute inference, and update prediction history."""
-    loader = DataLoader()
-    df = loader.get_latest_data()
+def _generate_record(feature_df: pd.DataFrame, model_inf: ModelInference, target_ts: pd.Timestamp) -> Dict:
+    feature_copy = feature_df.copy()
+    feature_copy["date"] = pd.to_datetime(feature_copy["date"]).dt.normalize()
 
-    if df.empty:
-        raise ValueError("No engineered data available for inference")
-
-    model_inf = ModelInference()
-    model_inf.load_models()
-
-    latest_date = pd.to_datetime(df["date"]).max().normalize()
-
-    if target_date is not None:
-        target_ts = pd.Timestamp(target_date).normalize()
-    else:
-        target_ts = latest_date
-
-    if latest_date != target_ts:
-        raise ValueError(
-            f"Latest data date {latest_date.date()} does not match requested target {target_ts.date()}"
-        )
-
-    feature_df = df.copy()
-    reference_slice = feature_df[feature_df["date"] == target_ts]
+    reference_slice = feature_copy[feature_copy["date"] == target_ts]
     if reference_slice.empty:
         raise ValueError(f"No rows for target date {target_ts.date()} in engineered data")
 
     reference_close = float(reference_slice["wti_price"].iloc[0])
-    feature_cols = _prepare_feature_columns(model_inf, feature_df)
-    meta_cols = [c for c in ["country", "country_iso3", "date"] if c in feature_df.columns]
-    feature_df = feature_df[meta_cols + feature_cols]
-    inference_result = model_inf.get_prediction_with_explanation(feature_df, feature_cols, date=target_ts)
+    feature_cols = _prepare_feature_columns(model_inf, feature_copy)
+    meta_cols = [c for c in ["country", "country_iso3", "date"] if c in feature_copy.columns]
+    feature_copy = feature_copy[meta_cols + feature_cols]
+
+    inference_result = model_inf.get_prediction_with_explanation(feature_copy, feature_cols, date=target_ts)
     predicted_delta = float(inference_result["predicted_delta"])
     predicted_close = reference_close + predicted_delta
-
     next_business = _next_business_day(target_ts)
 
     top_contributors = [
@@ -116,7 +96,7 @@ def run_daily_inference(target_date: Optional[datetime] = None) -> Dict:
     ]
 
     now_utc = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
-    record = {
+    return {
         "feature_date": str(target_ts.date()),
         "prediction_for_date": str(next_business.date()),
         "reference_close": reference_close,
@@ -128,6 +108,33 @@ def run_daily_inference(target_date: Optional[datetime] = None) -> Dict:
         "prediction_generated_at": now_utc,
     }
 
+
+def run_daily_inference(target_date: Optional[datetime] = None) -> Dict:
+    """Load latest engineered data, execute inference, and update prediction history."""
+    loader = DataLoader()
+    df = loader.get_latest_data()
+
+    if df.empty:
+        raise ValueError("No engineered data available for inference")
+
+    df["date"] = pd.to_datetime(df["date"]).dt.normalize()
+    latest_date = df["date"].max()
+
+    if target_date is not None:
+        target_ts = pd.Timestamp(target_date).normalize()
+    else:
+        target_ts = latest_date
+
+    if target_ts > latest_date:
+        raise ValueError(
+            f"Requested target {target_ts.date()} is in the future of available data {latest_date.date()}"
+        )
+
+    model_inf = ModelInference()
+    model_inf.load_models()
+
+    record = _generate_record(df, model_inf, target_ts)
+
     client = storage.Client()
     bucket = client.bucket(config.GCS_BUCKET_NAME)
     history = _load_history(bucket)
@@ -136,11 +143,11 @@ def run_daily_inference(target_date: Optional[datetime] = None) -> Dict:
     updated_outcomes = 0
     for past_record in history:
         if past_record.get("prediction_for_date") == record["feature_date"] and past_record.get("actual_close") is None:
-            past_record["actual_close"] = reference_close
-            past_record["actual_delta"] = reference_close - past_record.get("reference_close", reference_close)
+            past_record["actual_close"] = record["reference_close"]
+            past_record["actual_delta"] = record["reference_close"] - past_record.get("reference_close", record["reference_close"])
             past_record["error_delta"] = past_record.get("predicted_delta") - past_record["actual_delta"]
-            past_record["error_price"] = past_record.get("predicted_close") - reference_close
-            past_record["actual_recorded_at"] = now_utc
+            past_record["error_price"] = past_record.get("predicted_close") - record["reference_close"]
+            past_record["actual_recorded_at"] = record["prediction_generated_at"]
             updated_outcomes += 1
 
     # Deduplicate record for current feature date
