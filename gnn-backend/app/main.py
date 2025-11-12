@@ -99,6 +99,9 @@ async def predict():
             missing = [c for c in model_inf.feature_columns if c not in df.columns]
             if missing:
                 raise ValueError(f"Missing features from model: {missing[:5]}")
+            
+            keep_cols = ['country', 'date', 'country_iso3'] + feature_cols
+            df = df[[c for c in keep_cols if c in df.columns]]
         else:
             exclude_cols = ['country', 'date']
             feature_cols = [c for c in df.columns 
