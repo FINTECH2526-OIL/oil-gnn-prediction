@@ -121,11 +121,7 @@ class DailyDataPipeline:
     
     def process_gdelt_data(self, df: pd.DataFrame, target_date: datetime) -> Dict:
         if df.empty:
-            return {}
-        
-        df = df.copy()
-        df['V21DATE'] = pd.to_datetime(df['V21DATE'], format='%Y%m%d%H%M%S', errors='coerce')
-        df = df.dropna(subset=['V21DATE'])
+            return None
         
         countries = []
         for locations in df['V21LOCATIONS'].fillna(''):
@@ -144,6 +140,39 @@ class DailyDataPipeline:
         
         theme_counts = pd.Series(themes).value_counts()
         
+        # Extract theme counts per country
+        country_themes = {}
+        for idx, row in df.iterrows():
+            row_countries = self._extract_countries(row['V21LOCATIONS'])
+            row_themes = [t.strip() for t in str(row['V21THEMES']).split(';') if t.strip()]
+            
+            for country in row_countries:
+                if country not in country_themes:
+                    country_themes[country] = {
+                        'GENERAL_GOVERNMENT': 0,
+                        'ENV_CLIMATECHANGE': 0,
+                        'ECON_TRADE': 0,
+                        'UNGP_SANCTIONS': 0,
+                        'CRISISLEX_CRISISLEXREC': 0,
+                        'TAX_FNCACT_OIL': 0,
+                        'WB_632_ENERGY_POLICY': 0
+                    }
+                for theme in row_themes:
+                    if 'GOVERNMENT' in theme or 'POLICY' in theme:
+                        country_themes[country]['GENERAL_GOVERNMENT'] += 1
+                    if 'CLIMATE' in theme or 'ENV_' in theme:
+                        country_themes[country]['ENV_CLIMATECHANGE'] += 1
+                    if 'TRADE' in theme or 'ECON_' in theme:
+                        country_themes[country]['ECON_TRADE'] += 1
+                    if 'SANCTION' in theme:
+                        country_themes[country]['UNGP_SANCTIONS'] += 1
+                    if 'CRISIS' in theme or 'CONFLICT' in theme:
+                        country_themes[country]['CRISISLEX_CRISISLEXREC'] += 1
+                    if 'OIL' in theme or 'PETROL' in theme:
+                        country_themes[country]['TAX_FNCACT_OIL'] += 1
+                    if 'ENERGY' in theme:
+                        country_themes[country]['WB_632_ENERGY_POLICY'] += 1
+        
         result = {
             'date': target_date.strftime('%Y-%m-%d'),
             'total_articles': len(df),
@@ -151,7 +180,8 @@ class DailyDataPipeline:
             'tone_std': np.std(tone_values) if tone_values else 0.0,
             'num_countries': len(country_counts),
             'top_countries': country_counts.head(50).to_dict(),
-            'top_themes': theme_counts.head(100).to_dict()
+            'top_themes': theme_counts.head(100).to_dict(),
+            'country_themes': country_themes
         }
         
         return result
@@ -226,17 +256,28 @@ class DailyDataPipeline:
             date = row['date']
             wti_price = row.get('wti_price', 0)
             brent_price = row.get('brent_price', 0)
+            country_themes = row.get('country_themes', {})
             
             if pd.notna(row.get('top_countries')) and isinstance(row['top_countries'], dict):
                 for country, count in row['top_countries'].items():
+                    # Get theme counts for this country
+                    themes = country_themes.get(country, {})
+                    
                     country_data.append({
                         'date': date,
                         'country': country,
                         'wti_price': wti_price,
                         'brent_price': brent_price,
                         'article_count': count,
-                        'avg_tone': row.get('avg_tone', 0),
-                        'tone_std': row.get('tone_std', 0)
+                        'avg_sentiment': row.get('avg_tone', 0),
+                        'tone_std': row.get('tone_std', 0),
+                        'event_count': count,
+                        'theme_energy': themes.get('WB_632_ENERGY_POLICY', 0) + themes.get('TAX_FNCACT_OIL', 0),
+                        'theme_conflict': themes.get('CRISISLEX_CRISISLEXREC', 0),
+                        'theme_sanctions': themes.get('UNGP_SANCTIONS', 0),
+                        'theme_trade': themes.get('ECON_TRADE', 0),
+                        'theme_economy': themes.get('ECON_TRADE', 0),
+                        'theme_policy': themes.get('GENERAL_GOVERNMENT', 0)
                     })
         
         df = pd.DataFrame(country_data)
