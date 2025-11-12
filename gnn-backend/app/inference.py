@@ -64,6 +64,32 @@ class ModelInference:
                 metadata = json.load(f)
                 self.feature_columns = metadata.get('feature_columns', None)
         
+        if self.feature_columns is None and hasattr(self.scaler_X, 'n_features_in_'):
+            n_features = self.scaler_X.n_features_in_
+            expected_features = [
+                'wti_price', 'brent_price', 'wti_delta', 'wti_return',
+                'wti_delta_lag1', 'wti_delta_lag2', 'wti_delta_lag3',
+                'wti_delta_lag5', 'wti_delta_lag7', 'wti_delta_lag14', 'wti_delta_lag30',
+                'wti_return_ma5', 'wti_return_ma10', 'wti_return_ma20', 'wti_return_ma30',
+                'wti_return_std5', 'wti_return_std10', 'wti_return_std20', 'wti_return_std30',
+                'wti_rsi', 'wti_momentum_5_20', 'wti_momentum_10_30',
+                'brent_delta', 'brent_return',
+                'brent_delta_lag1', 'brent_delta_lag2', 'brent_delta_lag3',
+                'brent_delta_lag5', 'brent_delta_lag7', 'brent_delta_lag14', 'brent_delta_lag30',
+                'brent_return_ma5', 'brent_return_ma10', 'brent_return_ma20', 'brent_return_ma30',
+                'brent_return_std5', 'brent_return_std10', 'brent_return_std20', 'brent_return_std30',
+                'brent_rsi', 'brent_momentum_5_20', 'brent_momentum_10_30',
+                'avg_sentiment', 'sentiment_lag1', 'sentiment_lag7', 'tone_std', 'event_count',
+                'theme_energy', 'theme_conflict', 'theme_sanctions',
+                'theme_trade', 'theme_economy', 'theme_policy',
+                'theme_energy_change', 'theme_conflict_change',
+                'theme_energy_zscore', 'theme_conflict_zscore',
+                'theme_energy_spike', 'theme_conflict_spike',
+                'spread_wti_brent', 'correlation_20d', 'volatility_ratio'
+            ]
+            if len(expected_features) == n_features:
+                self.feature_columns = expected_features
+        
         self.models_loaded = True
     
     def predict_delta(self, X):
