@@ -149,6 +149,23 @@ class DataLoader:
                 df[f'{col}_zscore'] = (df[col] - rolling_mean) / (rolling_std + 1e-8)
                 df[f'{col}_spike'] = (df[f'{col}_zscore'] > 2).astype(int)
         
+        # CRITICAL: Ensure all base columns exist (for backward compatibility with old GCS data)
+        required_base_columns = {
+            'tone_std': 0.0,
+            'event_count': 0,
+            'avg_sentiment': 0.0,
+            'theme_energy': 0,
+            'theme_conflict': 0,
+            'theme_sanctions': 0,
+            'theme_trade': 0,
+            'theme_economy': 0,
+            'theme_policy': 0
+        }
+        
+        for col, default_value in required_base_columns.items():
+            if col not in df.columns:
+                df[col] = default_value
+        
         # Target features (for compatibility with training, won't be used in prediction)
         df['wti_delta_next'] = df.groupby('country_iso3')['wti_delta'].shift(-1)
         df['wti_return_next'] = df.groupby('country_iso3')['wti_return'].shift(-1)
