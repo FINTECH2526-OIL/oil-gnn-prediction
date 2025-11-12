@@ -67,7 +67,7 @@ class ModelInference:
         if self.feature_columns is None and hasattr(self.scaler_X, 'n_features_in_'):
             n_features = self.scaler_X.n_features_in_
             expected_features = [
-                'wti_price', 'brent_price', 'wti_delta', 'wti_return',
+                'wti_price', 'wti_delta', 'wti_return',
                 'wti_delta_lag1', 'wti_delta_lag2', 'wti_delta_lag3',
                 'wti_delta_lag5', 'wti_delta_lag7', 'wti_delta_lag14', 'wti_delta_lag30',
                 'wti_return_ma5', 'wti_return_ma10', 'wti_return_ma20', 'wti_return_ma30',

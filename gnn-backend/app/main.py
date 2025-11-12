@@ -98,10 +98,13 @@ async def predict():
             feature_cols = [c for c in model_inf.feature_columns if c in df.columns]
             missing = [c for c in model_inf.feature_columns if c not in df.columns]
             if missing:
-                raise ValueError(f"Missing features from model: {missing[:5]}")
+                raise ValueError(f"Missing {len(missing)} features from model: {missing[:10]}")
             
-            keep_cols = ['country', 'date', 'country_iso3'] + feature_cols
-            df = df[[c for c in keep_cols if c in df.columns]]
+            meta_cols = [c for c in ['country', 'date', 'country_iso3'] if c in df.columns]
+            df = df[meta_cols + feature_cols]
+            
+            if len(feature_cols) != len(model_inf.feature_columns):
+                raise ValueError(f"Feature mismatch: model needs {len(model_inf.feature_columns)}, found {len(feature_cols)}")
         else:
             exclude_cols = ['country', 'date']
             feature_cols = [c for c in df.columns 
