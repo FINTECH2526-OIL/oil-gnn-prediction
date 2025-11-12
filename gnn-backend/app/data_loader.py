@@ -31,7 +31,7 @@ class DataLoader:
         return local_path
     
     def engineer_features(self, df):
-        """Apply the same feature engineering as training"""
+        """Apply the same feature engineering as training - EXACTLY matching model_training.py"""
         # Add country_iso3 if not exists
         if 'country_iso3' not in df.columns:
             def to_iso3(name):
@@ -56,13 +56,17 @@ class DataLoader:
         # Basic price features
         df['wti_return'] = df.groupby('country_iso3')['wti_price'].pct_change()
         df['wti_delta'] = df.groupby('country_iso3')['wti_price'].diff()
+        df['brent_return'] = df.groupby('country_iso3')['brent_price'].pct_change()
+        df['brent_delta'] = df.groupby('country_iso3')['brent_price'].diff()
         
-        # Lag features
+        # Lag features (1, 2, 3, 5, 7, 14, 30)
         for lag in [1, 2, 3, 5, 7, 14, 30]:
             df[f'wti_delta_lag{lag}'] = df.groupby('country_iso3')['wti_delta'].shift(lag)
             df[f'wti_return_lag{lag}'] = df.groupby('country_iso3')['wti_return'].shift(lag)
+            df[f'brent_delta_lag{lag}'] = df.groupby('country_iso3')['brent_delta'].shift(lag)
+            df[f'brent_return_lag{lag}'] = df.groupby('country_iso3')['brent_return'].shift(lag)
         
-        # Moving averages and std
+        # Moving averages and std (5, 10, 20, 30)
         for window in [5, 10, 20, 30]:
             df[f'wti_return_ma{window}'] = df.groupby('country_iso3')['wti_return'].transform(
                 lambda x: x.rolling(window, min_periods=1).mean())
@@ -70,12 +74,67 @@ class DataLoader:
                 lambda x: x.rolling(window, min_periods=1).std())
             df[f'wti_delta_ma{window}'] = df.groupby('country_iso3')['wti_delta'].transform(
                 lambda x: x.rolling(window, min_periods=1).mean())
+            
+            df[f'brent_return_ma{window}'] = df.groupby('country_iso3')['brent_return'].transform(
+                lambda x: x.rolling(window, min_periods=1).mean())
+            df[f'brent_return_std{window}'] = df.groupby('country_iso3')['brent_return'].transform(
+                lambda x: x.rolling(window, min_periods=1).std())
+            df[f'brent_delta_ma{window}'] = df.groupby('country_iso3')['brent_delta'].transform(
+                lambda x: x.rolling(window, min_periods=1).mean())
         
         # Momentum features
         df['wti_momentum_5_20'] = df['wti_return_ma5'] - df['wti_return_ma20']
         df['wti_momentum_10_30'] = df['wti_return_ma10'] - df['wti_return_ma30']
+        df['brent_momentum_5_20'] = df['brent_return_ma5'] - df['brent_return_ma20']
+        df['brent_momentum_10_30'] = df['brent_return_ma10'] - df['brent_return_ma30']
         
-        # Target features (for compatibility, won't be used in prediction)
+        # RSI for WTI and Brent
+        for price_col in ['wti_price', 'brent_price']:
+            delta = df.groupby('country_iso3')[price_col].diff()
+            gain = delta.where(delta > 0, 0)
+            loss = -delta.where(delta < 0, 0)
+            
+            avg_gain = gain.groupby(df['country_iso3']).transform(lambda x: x.rolling(14, min_periods=1).mean())
+            avg_loss = loss.groupby(df['country_iso3']).transform(lambda x: x.rolling(14, min_periods=1).mean())
+            
+            rs = avg_gain / avg_loss.replace(0, np.nan)
+            df[f'{price_col.replace("_price", "")}_rsi'] = 100 - (100 / (1 + rs))
+        
+        # GDELT/Event features - check for both naming conventions
+        if 'avg_sentiment' in df.columns:
+            for lag in [1, 2, 3, 5, 7]:
+                df[f'avg_sentiment_lag{lag}'] = df.groupby('country_iso3')['avg_sentiment'].shift(lag)
+        elif 'avg_tone' in df.columns:
+            df['avg_sentiment'] = df['avg_tone']
+            for lag in [1, 2, 3, 5, 7]:
+                df[f'avg_sentiment_lag{lag}'] = df.groupby('country_iso3')['avg_sentiment'].shift(lag)
+        
+        if 'tone_std' in df.columns:
+            for lag in [1, 7]:
+                df[f'tone_std_lag{lag}'] = df.groupby('country_iso3')['tone_std'].shift(lag)
+        
+        if 'event_count' in df.columns:
+            for lag in [1, 7]:
+                df[f'event_count_lag{lag}'] = df.groupby('country_iso3')['event_count'].shift(lag)
+        elif 'mention_count' in df.columns:
+            df['event_count'] = df['mention_count']
+            for lag in [1, 7]:
+                df[f'event_count_lag{lag}'] = df.groupby('country_iso3')['event_count'].shift(lag)
+        
+        # Theme features - add change and lag features
+        theme_cols = [c for c in df.columns if c.startswith('theme_')]
+        for col in theme_cols:
+            if df[col].dtype != 'object':
+                df[f'{col}_change'] = df.groupby('country_iso3')[col].diff()
+                df[f'{col}_pct_change'] = df.groupby('country_iso3')[col].pct_change()
+                
+                # Z-score for anomaly detection
+                rolling_mean = df.groupby('country_iso3')[col].transform(lambda x: x.rolling(20, min_periods=5).mean())
+                rolling_std = df.groupby('country_iso3')[col].transform(lambda x: x.rolling(20, min_periods=5).std())
+                df[f'{col}_zscore'] = (df[col] - rolling_mean) / (rolling_std + 1e-8)
+                df[f'{col}_spike'] = (df[f'{col}_zscore'] > 2).astype(int)
+        
+        # Target features (for compatibility with training, won't be used in prediction)
         df['wti_delta_next'] = df.groupby('country_iso3')['wti_delta'].shift(-1)
         df['wti_return_next'] = df.groupby('country_iso3')['wti_return'].shift(-1)
         

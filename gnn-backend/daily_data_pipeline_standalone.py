@@ -112,30 +112,48 @@ class DailyDataPipeline:
             return None
     
     def process_gdelt_data(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Extract country-level features from GDELT data"""
+        """Extract country-level features from GDELT data including themes"""
         df = df[df['V21LOCATIONS'].notna()].copy()
         
         country_data = []
         for _, row in df.iterrows():
             locations = str(row['V21LOCATIONS']).split(';')
             tone_str = str(row['V21TONE'])
+            themes_str = str(row.get('V21THEMES', ''))
             
+            # Extract tone metrics
             try:
                 tone_values = [float(x) for x in tone_str.split(',')]
                 avg_tone = tone_values[0] if tone_values else 0
+                tone_std = tone_values[3] if len(tone_values) > 3 else 0
             except:
                 avg_tone = 0
+                tone_std = 0
             
+            # Categorize themes
+            theme_counts = {'ENERGY': 0, 'CONFLICT': 0, 'SANCTIONS': 0, 'TRADE': 0, 'ECONOMY': 0, 'POLICY': 0}
+            if themes_str and themes_str.lower() != 'nan':
+                themes = themes_str.split(';')[:10]  # Limit to first 10 themes
+                for theme in themes:
+                    theme_cat = self._get_theme_category(theme)
+                    if theme_cat in theme_counts:
+                        theme_counts[theme_cat] += 1
+            
+            # Extract countries from locations
             for loc in locations:
                 parts = loc.split('#')
                 if len(parts) >= 3:
                     country_code = parts[2]
                     if country_code and len(country_code) == 2:
-                        country_data.append({
+                        record = {
                             'country': country_code,
                             'tone': avg_tone,
-                            'date': pd.to_datetime(row['V21DATE'], format='%Y%m%d%H%M%S')
-                        })
+                            'tone_std': tone_std,
+                            'date': pd.to_datetime(row['V21DATE'], format='%Y%m%d%H%M%S'),
+                        }
+                        # Add theme counts
+                        record.update({f'theme_{k.lower()}': v for k, v in theme_counts.items()})
+                        country_data.append(record)
         
         if not country_data:
             return pd.DataFrame()
@@ -143,45 +161,89 @@ class DailyDataPipeline:
         country_df = pd.DataFrame(country_data)
         country_df['date'] = country_df['date'].dt.date
         
-        agg = country_df.groupby(['country', 'date']).agg({
-            'tone': ['mean', 'std', 'count']
-        }).reset_index()
+        # Aggregate by country and date
+        agg_dict = {
+            'tone': ['mean', 'std', 'count'],
+        }
+        # Add theme columns to aggregation
+        for theme in ['theme_energy', 'theme_conflict', 'theme_sanctions', 'theme_trade', 'theme_economy', 'theme_policy']:
+            if theme in country_df.columns:
+                agg_dict[theme] = 'sum'
         
-        agg.columns = ['country', 'date', 'avg_tone', 'tone_std', 'mention_count']
+        agg = country_df.groupby(['country', 'date']).agg(agg_dict).reset_index()
+        
+        # Flatten column names
+        new_cols = ['country', 'date', 'avg_tone', 'tone_std', 'mention_count']
+        for theme in ['theme_energy', 'theme_conflict', 'theme_sanctions', 'theme_trade', 'theme_economy', 'theme_policy']:
+            if theme in country_df.columns:
+                new_cols.append(theme)
+        
+        agg.columns = new_cols
         agg['tone_std'] = agg['tone_std'].fillna(0)
         
         return agg
     
+    def _get_theme_category(self, theme: str) -> str:
+        """Categorize GDELT themes into major categories"""
+        theme_upper = theme.upper()
+        
+        if any(x in theme_upper for x in ['OIL', 'ENERGY', 'GAS', 'PETROLEUM', 'FUEL', 'MINING', 'ECON_ENERGY', 'OILPRICE']):
+            return 'ENERGY'
+        elif any(x in theme_upper for x in ['WAR', 'CONFLICT', 'MILITARY', 'ARMED', 'VIOLENCE', 'KILL', 'ATTACK', 'TERROR']):
+            return 'CONFLICT'
+        elif any(x in theme_upper for x in ['SANCTION', 'EMBARGO', 'BLOCKADE', 'RESTRICTION']):
+            return 'SANCTIONS'
+        elif any(x in theme_upper for x in ['TRADE', 'EXPORT', 'IMPORT', 'TARIFF', 'COMMERCE']):
+            return 'TRADE'
+        elif any(x in theme_upper for x in ['ECON_', 'ECONOMY', 'INFLATION', 'CURRENCY', 'FINANCE', 'MARKET']):
+            return 'ECONOMY'
+        elif any(x in theme_upper for x in ['GOVERNMENT', 'POLICY', 'REGULATION', 'LAW', 'LEGAL']):
+            return 'POLICY'
+        else:
+            return 'OTHER'
+    
     def align_and_engineer_features(self, gdelt_df: pd.DataFrame, oil_df: pd.DataFrame) -> pd.DataFrame:
-        """Align GDELT and oil price data, engineer features"""
+        """Align GDELT and oil price data, engineer features matching training format"""
         gdelt_df['date'] = pd.to_datetime(gdelt_df['date'])
         oil_df['date'] = pd.to_datetime(oil_df['date'])
+        
+        # Rename oil columns to match training format
+        oil_df = oil_df.rename(columns={
+            'value_wti': 'wti_price',
+            'value_brent': 'brent_price'
+        })
         
         # Merge with oil prices
         merged = pd.merge(gdelt_df, oil_df, on='date', how='inner')
         
         # Convert oil prices to numeric
-        for col in ['value_wti', 'value_brent']:
+        for col in ['wti_price', 'brent_price']:
             merged[col] = pd.to_numeric(merged[col], errors='coerce')
         
         # Engineer features: lags, returns, moving averages, RSI
-        merged = merged.sort_values(['country_code', 'date']).reset_index(drop=True)
+        merged = merged.sort_values(['country', 'date']).reset_index(drop=True)
         
-        # Oil price features
-        for col in ['value_wti', 'value_brent']:
-            merged[f'{col}_lag1'] = merged.groupby('country')[col].shift(1)
-            merged[f'{col}_lag7'] = merged.groupby('country')[col].shift(7)
-            merged[f'{col}_return'] = merged.groupby('country')[col].pct_change()
-            merged[f'{col}_ma7'] = merged.groupby('country')[col].transform(lambda x: x.rolling(7, min_periods=1).mean())
-            merged[f'{col}_ma30'] = merged.groupby('country')[col].transform(lambda x: x.rolling(30, min_periods=1).mean())
-        
-        # GDELT features
-        merged['tone_lag1'] = merged.groupby('country')['avg_tone'].shift(1)
-        merged['tone_lag7'] = merged.groupby('country')['avg_tone'].shift(7)
-        merged['mention_count_lag1'] = merged.groupby('country')['mention_count'].shift(1)
-        
-        # RSI calculation
-        for col in ['value_wti', 'value_brent']:
+        # Oil price features - match training format
+        for col in ['wti_price', 'brent_price']:
+            # Returns and deltas
+            merged[f'{col.replace("_price", "")}_return'] = merged.groupby('country')[col].pct_change()
+            merged[f'{col.replace("_price", "")}_delta'] = merged.groupby('country')[col].diff()
+            
+            # Lags (1, 2, 3, 5, 7, 14, 30)
+            for lag in [1, 2, 3, 5, 7, 14, 30]:
+                merged[f'{col.replace("_price", "")}_delta_lag{lag}'] = merged.groupby('country')[f'{col.replace("_price", "")}_delta'].shift(lag)
+                merged[f'{col.replace("_price", "")}_return_lag{lag}'] = merged.groupby('country')[f'{col.replace("_price", "")}_return'].shift(lag)
+            
+            # Moving averages (5, 10, 20, 30)
+            for window in [5, 10, 20, 30]:
+                merged[f'{col.replace("_price", "")}_return_ma{window}'] = merged.groupby('country')[f'{col.replace("_price", "")}_return'].transform(
+                    lambda x: x.rolling(window, min_periods=1).mean())
+                merged[f'{col.replace("_price", "")}_return_std{window}'] = merged.groupby('country')[f'{col.replace("_price", "")}_return'].transform(
+                    lambda x: x.rolling(window, min_periods=1).std())
+                merged[f'{col.replace("_price", "")}_delta_ma{window}'] = merged.groupby('country')[f'{col.replace("_price", "")}_delta'].transform(
+                    lambda x: x.rolling(window, min_periods=1).mean())
+            
+            # RSI calculation
             delta = merged.groupby('country')[col].diff()
             gain = delta.where(delta > 0, 0)
             loss = -delta.where(delta < 0, 0)
@@ -190,7 +252,28 @@ class DailyDataPipeline:
             avg_loss = loss.groupby(merged['country']).transform(lambda x: x.rolling(14, min_periods=1).mean())
             
             rs = avg_gain / avg_loss.replace(0, np.nan)
-            merged[f'{col}_rsi'] = 100 - (100 / (1 + rs))
+            merged[f'{col.replace("_price", "")}_rsi'] = 100 - (100 / (1 + rs))
+        
+        # Momentum features
+        if 'wti_return_ma5' in merged.columns and 'wti_return_ma20' in merged.columns:
+            merged['wti_momentum_5_20'] = merged['wti_return_ma5'] - merged['wti_return_ma20']
+        if 'wti_return_ma10' in merged.columns and 'wti_return_ma30' in merged.columns:
+            merged['wti_momentum_10_30'] = merged['wti_return_ma10'] - merged['wti_return_ma30']
+        
+        # GDELT/Sentiment features with proper naming
+        if 'avg_tone' in merged.columns:
+            merged['avg_sentiment'] = merged['avg_tone']  # Rename for consistency
+            for lag in [1, 2, 3, 5, 7]:
+                merged[f'avg_sentiment_lag{lag}'] = merged.groupby('country')['avg_sentiment'].shift(lag)
+        
+        if 'tone_std' in merged.columns:
+            for lag in [1, 7]:
+                merged[f'tone_std_lag{lag}'] = merged.groupby('country')['tone_std'].shift(lag)
+        
+        if 'mention_count' in merged.columns:
+            merged['event_count'] = merged['mention_count']  # Rename for consistency
+            for lag in [1, 7]:
+                merged[f'event_count_lag{lag}'] = merged.groupby('country')['event_count'].shift(lag)
         
         # Fill NaN values
         merged = merged.fillna(0)
