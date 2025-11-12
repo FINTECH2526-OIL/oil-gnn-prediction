@@ -9,8 +9,8 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import logging
 
-# Add the current directory to path for imports
-sys.path.insert(0, '/workspace')
+# Add the app directory to path for imports
+sys.path.insert(0, '/app')
 
 from app.config import config
 from app.data_loader import load_latest_data

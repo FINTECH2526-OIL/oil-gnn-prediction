@@ -11,6 +11,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY gnn-backend/app /app/app
+COPY gnn-backend/backfill_predictions.py /workspace/backfill_predictions.py
 
 ENV PYTHONUNBUFFERED=1
 ENV PORT=8080
