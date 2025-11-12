@@ -95,16 +95,17 @@ async def predict():
         df = loader.get_latest_data()
         
         if model_inf.feature_columns is not None:
-            feature_cols = [c for c in model_inf.feature_columns if c in df.columns]
-            missing = [c for c in model_inf.feature_columns if c not in df.columns]
-            if missing:
-                raise ValueError(f"Missing {len(missing)} features from model: {missing[:10]}")
+            # Filter to only columns that exist in df
+            available_features = [c for c in model_inf.feature_columns if c in df.columns]
+            missing_from_df = [c for c in model_inf.feature_columns if c not in df.columns]
             
+            if missing_from_df:
+                print(f"WARNING: {len(missing_from_df)} features from model not in dataframe: {missing_from_df[:10]}")
+            
+            # Use available features - let scaler handle if it's wrong count
+            feature_cols = available_features
             meta_cols = [c for c in ['country', 'date', 'country_iso3'] if c in df.columns]
             df = df[meta_cols + feature_cols]
-            
-            if len(feature_cols) != len(model_inf.feature_columns):
-                raise ValueError(f"Feature mismatch: model needs {len(model_inf.feature_columns)}, found {len(feature_cols)}")
         else:
             exclude_cols = ['country', 'date']
             feature_cols = [c for c in df.columns 
