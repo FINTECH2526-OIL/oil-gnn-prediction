@@ -95,17 +95,27 @@ async def predict():
         df = loader.get_latest_data()
         
         if model_inf.feature_columns is not None:
-            # Filter to only columns that exist in df
-            available_features = [c for c in model_inf.feature_columns if c in df.columns]
-            missing_from_df = [c for c in model_inf.feature_columns if c not in df.columns]
-            
+            feature_cols = []
+            missing_from_df = []
+            for col in model_inf.feature_columns:
+                if col in df.columns:
+                    feature_cols.append(col)
+                else:
+                    missing_from_df.append(col)
+                    df[col] = 0.0
+                    feature_cols.append(col)
+
             if missing_from_df:
-                print(f"WARNING: {len(missing_from_df)} features from model not in dataframe: {missing_from_df[:10]}")
-            
-            # Use available features - let scaler handle if it's wrong count
-            feature_cols = available_features
+                print(f"WARNING: Backfilled {len(missing_from_df)} missing features with zeros: {missing_from_df[:10]}")
+
             meta_cols = [c for c in ['country', 'date', 'country_iso3'] if c in df.columns]
             df = df[meta_cols + feature_cols]
+
+            expected = getattr(model_inf.scaler_X, 'n_features_in_', len(feature_cols))
+            if len(feature_cols) != expected:
+                raise ValueError(
+                    f"Feature mismatch after alignment: scaler expects {expected}, prepared {len(feature_cols)}."
+                )
         else:
             exclude_cols = ['country', 'date']
             feature_cols = [c for c in df.columns 

@@ -3,6 +3,7 @@ import numpy as np
 import pandas as pd
 import json
 from pathlib import Path
+from typing import List
 from google.cloud import storage
 from .config import config
 from .models import CountryTemporalModels
@@ -19,6 +20,31 @@ class ModelInference:
         self.models_loaded = False
         self.feature_columns = None
         
+    @staticmethod
+    def _default_feature_columns() -> List[str]:
+        """Fallback list matching legacy 61-feature model training."""
+        return [
+            'wti_price', 'wti_delta', 'wti_return',
+            'wti_delta_lag1', 'wti_delta_lag2', 'wti_delta_lag3',
+            'wti_delta_lag5', 'wti_delta_lag7', 'wti_delta_lag14', 'wti_delta_lag30',
+            'wti_return_ma5', 'wti_return_ma10', 'wti_return_ma20', 'wti_return_ma30',
+            'wti_return_std5', 'wti_return_std10', 'wti_return_std20', 'wti_return_std30',
+            'wti_rsi', 'wti_momentum_5_20', 'wti_momentum_10_30',
+            'brent_delta', 'brent_return',
+            'brent_delta_lag1', 'brent_delta_lag2', 'brent_delta_lag3',
+            'brent_delta_lag5', 'brent_delta_lag7', 'brent_delta_lag14', 'brent_delta_lag30',
+            'brent_return_ma5', 'brent_return_ma10', 'brent_return_ma20', 'brent_return_ma30',
+            'brent_return_std5', 'brent_return_std10', 'brent_return_std20', 'brent_return_std30',
+            'brent_rsi', 'brent_momentum_5_20', 'brent_momentum_10_30',
+            'avg_sentiment', 'sentiment_lag1', 'sentiment_lag7', 'tone_std', 'event_count',
+            'theme_energy', 'theme_conflict', 'theme_sanctions',
+            'theme_trade', 'theme_economy', 'theme_policy',
+            'theme_energy_change', 'theme_conflict_change',
+            'theme_energy_zscore', 'theme_conflict_zscore',
+            'theme_energy_spike', 'theme_conflict_spike',
+            'spread_wti_brent', 'correlation_20d', 'volatility_ratio'
+        ]
+
     def download_model_artifacts(self):
         artifacts_prefix = f"{config.GCS_MODELS_PATH}{config.MODEL_RUN_ID}/artifacts/"
         
@@ -58,26 +84,40 @@ class ModelInference:
         self.scaler_X = joblib.load(model_dir / "scaler_X.pkl")
         self.adjacency = np.load(model_dir / "adjacency.npy")
         
+        metadata_features = None
         metadata_path = model_dir / "metadata.json"
         if metadata_path.exists():
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
-                self.feature_columns = metadata.get('feature_columns', None)
-                if self.feature_columns:
-                    print(f"Loaded {len(self.feature_columns)} features from metadata.json")
+                metadata_features = metadata.get('feature_columns')
+                if metadata_features:
+                    print(f"Loaded {len(metadata_features)} features from metadata.json")
         
-        # Fallback: Try to get feature names from scaler (sklearn >= 1.0)
-        if self.feature_columns is None and hasattr(self.scaler_X, 'feature_names_in_'):
-            self.feature_columns = self.scaler_X.feature_names_in_.tolist()
-            print(f"Loaded {len(self.feature_columns)} features from scaler.feature_names_in_")
+        scaler_features = None
+        if hasattr(self.scaler_X, 'feature_names_in_'):
+            scaler_features = self.scaler_X.feature_names_in_.tolist()
+            if scaler_features:
+                print(f"Loaded {len(scaler_features)} feature names from scaler.feature_names_in_")
         
-        # Last resort: Use all engineered features and hope for the best
-        if self.feature_columns is None:
-            print(f"WARNING: No feature list found in metadata or scaler!")
-            print(f"Scaler expects {self.scaler_X.n_features_in_} features")
-            print("Using all engineered features - this may cause errors")
-            # Return empty so main.py uses all available features
-            self.feature_columns = None
+        if scaler_features:
+            self.feature_columns = scaler_features
+        elif metadata_features:
+            expected = getattr(self.scaler_X, 'n_features_in_', None)
+            if expected and len(metadata_features) >= expected:
+                self.feature_columns = metadata_features[:expected]
+                if len(metadata_features) != expected:
+                    print(f"Trimmed metadata feature list from {len(metadata_features)} to {expected} to match scaler")
+            elif expected and len(metadata_features) < expected:
+                print(
+                    f"WARNING: Metadata provides {len(metadata_features)} features but scaler expects {expected}. "
+                    "Falling back to default feature list."
+                )
+                self.feature_columns = self._default_feature_columns()
+            else:
+                self.feature_columns = metadata_features
+        else:
+            self.feature_columns = self._default_feature_columns()
+            print(f"WARNING: Falling back to default feature list with {len(self.feature_columns)} columns")
         
         self.models_loaded = True
     
