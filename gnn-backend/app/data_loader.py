@@ -138,12 +138,10 @@ class DataLoader:
             brent_vol = df.groupby('country_iso3')['brent_return'].transform(lambda x: x.rolling(20, min_periods=10).std())
             df['volatility_ratio'] = wti_vol / (brent_vol + 1e-8)
         
-        # Theme features - add change and lag features
-        theme_cols = [c for c in df.columns if c.startswith('theme_')]
-        for col in theme_cols:
-            if df[col].dtype != 'object':
+        # Theme features - ONLY for energy and conflict (model only uses these 2)
+        for col in ['theme_energy', 'theme_conflict']:
+            if col in df.columns and df[col].dtype != 'object':
                 df[f'{col}_change'] = df.groupby('country_iso3')[col].diff()
-                df[f'{col}_pct_change'] = df.groupby('country_iso3')[col].pct_change()
                 
                 # Z-score for anomaly detection
                 rolling_mean = df.groupby('country_iso3')[col].transform(lambda x: x.rolling(20, min_periods=5).mean())
