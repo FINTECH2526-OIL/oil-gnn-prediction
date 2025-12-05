@@ -1,0 +1,522 @@
+import os
+import pandas as pd
+import numpy as np
+import requests
+import zipfile
+import io
+from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
+import time
+import gzip
+import json
+from typing import List, Dict, Optional
+from google.cloud import storage
+import pycountry
+
+from .config import config
+
+SGT = ZoneInfo("Asia/Singapore")
+
+
+def _to_business_day(target: date) -> date:
+    while target.weekday() >= 5:
+        target -= timedelta(days=1)
+    return target
+
+
+def _resolve_target_datetime(requested: Optional[datetime] = None) -> datetime:
+    if requested is not None:
+        if isinstance(requested, datetime):
+            if requested.tzinfo is not None:
+                requested = requested.astimezone(SGT)
+            else:
+                requested = requested.replace(tzinfo=SGT)
+            candidate = requested.date()
+        else:
+            candidate = requested
+    else:
+        now_sgt = datetime.now(tz=SGT)
+        candidate = (now_sgt - timedelta(days=1)).date()
+
+    candidate = _to_business_day(candidate)
+    return datetime.combine(candidate, datetime.min.time(), tzinfo=SGT)
+
+class DailyDataPipeline:
+    def __init__(self):
+        self.client = storage.Client()
+        self.bucket = self.client.bucket(config.GCS_BUCKET_NAME)
+        self.alpha_vantage_key = os.environ.get("ALPHA_VANTAGE_API_KEY")
+        
+    def fetch_gdelt_for_date(self, target_date: datetime) -> pd.DataFrame:
+        date_str = target_date.strftime('%Y%m%d')
+        
+        base_url = "http://data.gdeltproject.org/gdeltv2"
+        
+        all_records = []
+        
+        for hour in range(24):
+            for minute in ['00', '15', '30', '45']:
+                timestamp = f"{date_str}{hour:02d}{minute}00"
+                url = f"{base_url}/{timestamp}.gkg.csv.zip"
+                
+                df = self._fetch_single_gdelt_file(url)
+                if df is not None and not df.empty:
+                    all_records.append(df)
+        
+        if all_records:
+            combined_df = pd.concat(all_records, ignore_index=True)
+            return combined_df
+        
+        return pd.DataFrame()
+    
+    def _fetch_single_gdelt_file(self, url: str) -> Optional[pd.DataFrame]:
+        columns = [
+            'GKGRECORDID', 'V21DATE', 'V2SOURCECOLLECTIONIDENTIFIER', 'V2SOURCECOMMONNAME',
+            'V2DOCUMENTIDENTIFIER', 'V1COUNTS', 'V21COUNTS', 'V1THEMES', 'V21THEMES',
+            'V1LOCATIONS', 'V21LOCATIONS', 'V1PERSONS', 'V21PERSONS', 'V1ORGANIZATIONS',
+            'V21ORGANIZATIONS', 'V1TONE', 'V21TONE', 'V1DATES', 'V21DATES', 'V1GCAM',
+            'V21SHARINGIMAGE', 'V21RELATEDIMAGES', 'V21SOCIALIMAGEEMBEDS', 'V21SOCIALVIDEOEMBEDS',
+            'V21QUOTATIONS', 'V21ALLNAMES', 'V21AMOUNTS', 'V21TRANSLATIONINFO', 'V21EXTRAS'
+        ]
+        
+        try:
+            response = requests.get(url, timeout=30)
+            if response.status_code == 200:
+                with zipfile.ZipFile(io.BytesIO(response.content)) as z:
+                    csv_filename = z.namelist()[0]
+                    with z.open(csv_filename) as csvfile:
+                        df = pd.read_csv(csvfile, sep='\t', names=columns,
+                                       dtype=str, low_memory=False, encoding='utf-8',
+                                       on_bad_lines='skip')
+                        return df
+            elif response.status_code == 404:
+                return None
+        except Exception as e:
+            return None
+        
+        return None
+    
+    def fetch_oil_prices(self, days_back: int = 90) -> pd.DataFrame:
+        if not self.alpha_vantage_key:
+            raise ValueError("ALPHA_VANTAGE_API_KEY environment variable not set")
+        
+        print("Fetching WTI prices from Alpha Vantage...", flush=True)
+        url = f"https://www.alphavantage.co/query"
+        params = {
+            "function": "WTI",
+            "interval": "daily",
+            "apikey": self.alpha_vantage_key
+        }
+        
+        response = requests.get(url, params=params, timeout=30)
+        data = response.json()
+        
+        if "data" not in data:
+            raise ValueError(f"Alpha Vantage API error: {data}")
+        
+        records = []
+        skipped_wti = 0
+        for item in data["data"]:
+            value = item.get("value")
+            try:
+                price = float(value)
+            except (TypeError, ValueError):
+                # Skip malformed or missing price entries returned as '.' or None
+                skipped_wti += 1
+                continue
+
+            records.append({
+                "date": pd.to_datetime(item["date"]),
+                "wti_price": price
+            })
+        print(f"WTI records kept: {len(records)}, skipped: {skipped_wti}", flush=True)
+        
+        df = pd.DataFrame(records)
+        df = df.sort_values("date").reset_index(drop=True)
+        
+        print("Fetching Brent prices from Alpha Vantage...", flush=True)
+        url_brent = f"https://www.alphavantage.co/query"
+        params_brent = {
+            "function": "BRENT",
+            "interval": "daily",
+            "apikey": self.alpha_vantage_key
+        }
+        
+        response_brent = requests.get(url_brent, params=params_brent, timeout=30)
+        data_brent = response_brent.json()
+        
+        if "data" in data_brent:
+            brent_records = []
+            skipped_brent = 0
+            for item in data_brent["data"]:
+                value = item.get("value")
+                try:
+                    price = float(value)
+                except (TypeError, ValueError):
+                    # Alpha Vantage occasionally emits '.' when data is unavailable
+                    skipped_brent += 1
+                    continue
+
+                brent_records.append({
+                    "date": pd.to_datetime(item["date"]),
+                    "brent_price": price
+                })
+            
+            df_brent = pd.DataFrame(brent_records)
+            df = df.merge(df_brent, on="date", how="left")
+            print(f"Brent records kept: {len(brent_records)}, skipped: {skipped_brent}", flush=True)
+        else:
+            print(f"Alpha Vantage Brent response missing data field: {data_brent}", flush=True)
+        
+        return df
+    
+    def process_gdelt_data(self, df: pd.DataFrame, target_date: datetime) -> Dict:
+        if df.empty:
+            return None
+        
+        countries = []
+        for locations in df['V21LOCATIONS'].fillna(''):
+            countries.extend(self._extract_countries(locations))
+        
+        country_counts = pd.Series(countries).value_counts()
+        
+        tone_values = []
+        for tone_str in df['V21TONE'].fillna(''):
+            tone_metrics = self._extract_tone(tone_str)
+            tone_values.append(tone_metrics['tone'])
+        
+        themes = []
+        for theme_str in df['V21THEMES'].fillna(''):
+            themes.extend([t.strip() for t in theme_str.split(';') if t.strip()])
+        
+        theme_counts = pd.Series(themes).value_counts()
+        
+        # Extract theme counts per country
+        country_themes = {}
+        for idx, row in df.iterrows():
+            row_countries = self._extract_countries(row['V21LOCATIONS'])
+            row_themes = [t.strip() for t in str(row['V21THEMES']).split(';') if t.strip()]
+            
+            for country in row_countries:
+                if country not in country_themes:
+                    country_themes[country] = {
+                        'GENERAL_GOVERNMENT': 0,
+                        'ENV_CLIMATECHANGE': 0,
+                        'ECON_TRADE': 0,
+                        'UNGP_SANCTIONS': 0,
+                        'CRISISLEX_CRISISLEXREC': 0,
+                        'TAX_FNCACT_OIL': 0,
+                        'WB_632_ENERGY_POLICY': 0
+                    }
+                for theme in row_themes:
+                    if 'GOVERNMENT' in theme or 'POLICY' in theme:
+                        country_themes[country]['GENERAL_GOVERNMENT'] += 1
+                    if 'CLIMATE' in theme or 'ENV_' in theme:
+                        country_themes[country]['ENV_CLIMATECHANGE'] += 1
+                    if 'TRADE' in theme or 'ECON_' in theme:
+                        country_themes[country]['ECON_TRADE'] += 1
+                    if 'SANCTION' in theme:
+                        country_themes[country]['UNGP_SANCTIONS'] += 1
+                    if 'CRISIS' in theme or 'CONFLICT' in theme:
+                        country_themes[country]['CRISISLEX_CRISISLEXREC'] += 1
+                    if 'OIL' in theme or 'PETROL' in theme:
+                        country_themes[country]['TAX_FNCACT_OIL'] += 1
+                    if 'ENERGY' in theme:
+                        country_themes[country]['WB_632_ENERGY_POLICY'] += 1
+        
+        result = {
+            'date': target_date.strftime('%Y-%m-%d'),
+            'total_articles': len(df),
+            'avg_tone': np.mean(tone_values) if tone_values else 0.0,
+            'tone_std': np.std(tone_values) if tone_values else 0.0,
+            'num_countries': len(country_counts),
+            'top_countries': country_counts.head(50).to_dict(),
+            'top_themes': theme_counts.head(100).to_dict(),
+            'country_themes': country_themes
+        }
+        
+        return result
+    
+    def _extract_countries(self, locations_str: str) -> List[str]:
+        if not locations_str:
+            return []
+        
+        countries = []
+        try:
+            location_entries = locations_str.split(';')
+            for entry in location_entries:
+                if '#' in entry:
+                    parts = entry.split('#')
+                    if len(parts) >= 3:
+                        country_code = parts[2]
+                        if country_code and len(country_code) == 2:
+                            try:
+                                country = pycountry.countries.get(alpha_2=country_code.upper())
+                                if country:
+                                    countries.append(country.alpha_3)
+                            except:
+                                pass
+        except:
+            pass
+        
+        return countries
+    
+    def _extract_tone(self, tone_str: str) -> Dict[str, float]:
+        tone_dict = {
+            'tone': 0.0,
+            'positive_score': 0.0,
+            'negative_score': 0.0,
+            'polarity': 0.0,
+            'word_count': 0
+        }
+        
+        if not tone_str:
+            return tone_dict
+        
+        try:
+            parts = tone_str.split(',')
+            if len(parts) >= 1:
+                tone_dict['tone'] = float(parts[0])
+            if len(parts) >= 2:
+                tone_dict['positive_score'] = float(parts[1])
+            if len(parts) >= 3:
+                tone_dict['negative_score'] = float(parts[2])
+            if len(parts) >= 4:
+                tone_dict['polarity'] = float(parts[3])
+            if len(parts) >= 7:
+                tone_dict['word_count'] = int(float(parts[6]))
+        except:
+            pass
+        
+        return tone_dict
+    
+    def align_and_engineer_features(self, gdelt_data: List[Dict], oil_data: pd.DataFrame) -> pd.DataFrame:
+        gdelt_df = pd.DataFrame(gdelt_data)
+        gdelt_df['date'] = pd.to_datetime(gdelt_df['date'])
+        
+        oil_data['date'] = pd.to_datetime(oil_data['date'])
+        
+        print("Aligning oil and GDELT features...", flush=True)
+        merged = oil_data.merge(gdelt_df, on='date', how='left')
+        
+        for col in ['wti_price', 'brent_price']:
+            if col in merged.columns:
+                merged[col] = merged[col].fillna(method='ffill')
+        
+        country_data = []
+        for idx, row in merged.iterrows():
+            date = row['date']
+            wti_price = row.get('wti_price', 0)
+            brent_price = row.get('brent_price', 0)
+            country_themes = row.get('country_themes', {})
+            
+            if pd.notna(row.get('top_countries')) and isinstance(row['top_countries'], dict):
+                for country, count in row['top_countries'].items():
+                    # Get theme counts for this country
+                    themes = country_themes.get(country, {})
+                    
+                    country_data.append({
+                        'date': date,
+                        'country': country,
+                        'wti_price': wti_price,
+                        'brent_price': brent_price,
+                        'article_count': count,
+                        'avg_sentiment': row.get('avg_tone', 0),
+                        'tone_std': row.get('tone_std', 0),
+                        'event_count': count,
+                        'theme_energy': themes.get('WB_632_ENERGY_POLICY', 0) + themes.get('TAX_FNCACT_OIL', 0),
+                        'theme_conflict': themes.get('CRISISLEX_CRISISLEXREC', 0),
+                        'theme_sanctions': themes.get('UNGP_SANCTIONS', 0),
+                        'theme_trade': themes.get('ECON_TRADE', 0),
+                        'theme_economy': themes.get('ECON_TRADE', 0),
+                        'theme_policy': themes.get('GENERAL_GOVERNMENT', 0)
+                    })
+        
+        df = pd.DataFrame(country_data)
+        
+        if df.empty:
+            return df
+        
+        df = df.sort_values(['country', 'date']).reset_index(drop=True)
+        
+        df['country_iso3'] = df['country']
+        
+        for col in ['wti_price', 'brent_price']:
+            if col in df.columns:
+                df[f'{col}_lag1'] = df.groupby('country_iso3')[col].shift(1)
+                df[f'{col}_lag2'] = df.groupby('country_iso3')[col].shift(2)
+                df[f'{col}_lag7'] = df.groupby('country_iso3')[col].shift(7)
+        
+        df['wti_return'] = df.groupby('country_iso3')['wti_price'].pct_change()
+        df['wti_delta'] = df.groupby('country_iso3')['wti_price'].diff()
+        
+        for window in [5, 10, 20, 30]:
+            df[f'wti_return_ma{window}'] = df.groupby('country_iso3')['wti_return'].transform(
+                lambda x: x.rolling(window, min_periods=1).mean()
+            )
+            df[f'wti_return_std{window}'] = df.groupby('country_iso3')['wti_return'].transform(
+                lambda x: x.rolling(window, min_periods=1).std()
+            )
+        
+        df['wti_momentum_5_20'] = df['wti_return_ma5'] - df['wti_return_ma20']
+        
+        df['wti_rsi'] = df.groupby('country_iso3')['wti_return'].transform(
+            lambda x: 100 - 100/(1 + x.rolling(14).apply(
+                lambda y: (y>0).sum()/(y<0).sum() if (y<0).sum()>0 else 1
+            ))
+        )
+        
+        df['article_count_lag1'] = df.groupby('country_iso3')['article_count'].shift(1)
+        df['article_count_change'] = df.groupby('country_iso3')['article_count'].pct_change()
+
+        # Ensure sentiment fields are consistently available for feature generation
+        df['avg_sentiment'] = pd.to_numeric(df.get('avg_sentiment', 0), errors='coerce').fillna(0)
+        df['sentiment_lag1'] = df.groupby('country_iso3')['avg_sentiment'].shift(1)
+        df['sentiment_lag7'] = df.groupby('country_iso3')['avg_sentiment'].shift(7)
+        df['sentiment_change'] = df.groupby('country_iso3')['avg_sentiment'].diff()
+
+        # Backward-compatible aliases for legacy feature names
+        df['avg_tone'] = df['avg_sentiment']
+        df['tone_lag1'] = df['sentiment_lag1']
+        df['tone_change'] = df['sentiment_change']
+
+        df.fillna(0, inplace=True)
+
+        print(f"Engineered records: {len(df)}", flush=True)
+        return df
+    
+    def _load_cached_oil_data(self, date_str: str) -> Optional[pd.DataFrame]:
+        """Load cached oil data from GCS."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_oil.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            if not blob.exists():
+                return None
+            
+            data = blob.download_as_bytes()
+            decompressed = gzip.decompress(data)
+            oil_data = json.loads(decompressed.decode('utf-8'))
+            df = pd.DataFrame(oil_data)
+            df['date'] = pd.to_datetime(df['date'])
+            print(f"✓ Loaded cached oil data from {cache_path}", flush=True)
+            return df
+        except Exception as e:
+            print(f"Failed to load cached oil data: {e}", flush=True)
+            return None
+
+    def _save_cached_oil_data(self, oil_data: pd.DataFrame, date_str: str):
+        """Save oil data to GCS cache."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_oil.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            records = oil_data.to_dict('records')
+            json_data = json.dumps(records, default=str).encode('utf-8')
+            compressed = gzip.compress(json_data)
+            
+            blob.upload_from_string(compressed, content_type='application/gzip')
+            print(f"✓ Saved oil data to cache: {cache_path}", flush=True)
+        except Exception as e:
+            print(f"Failed to save oil data to cache: {e}", flush=True)
+
+    def _load_cached_gdelt_data(self, date_str: str) -> Optional[List[Dict]]:
+        """Load cached GDELT data from GCS."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_gdelt.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            if not blob.exists():
+                return None
+            
+            data = blob.download_as_bytes()
+            decompressed = gzip.decompress(data)
+            gdelt_data = json.loads(decompressed.decode('utf-8'))
+            print(f"✓ Loaded cached GDELT data from {cache_path}", flush=True)
+            return gdelt_data
+        except Exception as e:
+            print(f"Failed to load cached GDELT data: {e}", flush=True)
+            return None
+
+    def _save_cached_gdelt_data(self, gdelt_data_list: List[Dict], date_str: str):
+        """Save GDELT data to GCS cache."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_gdelt.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            json_data = json.dumps(gdelt_data_list, default=str).encode('utf-8')
+            compressed = gzip.compress(json_data)
+            
+            blob.upload_from_string(compressed, content_type='application/gzip')
+            print(f"✓ Saved GDELT data to cache: {cache_path}", flush=True)
+        except Exception as e:
+            print(f"Failed to save GDELT data to cache: {e}", flush=True)
+
+    def run_daily_update(self, target_date: Optional[datetime] = None, force_refresh: bool = False) -> str:
+        target_dt = _resolve_target_datetime(target_date)
+        target_dt_naive = target_dt.replace(tzinfo=None)
+
+        print(f"Running daily data pipeline for {target_dt.date()}")
+
+        # Try to load cached data first
+        cache_date_str = target_dt.date().strftime('%Y%m%d')
+        oil_data = None
+        gdelt_data_list = None
+        
+        if not force_refresh:
+            print("→ Checking for cached data in GCS...", flush=True)
+            oil_data = self._load_cached_oil_data(cache_date_str)
+            gdelt_data_list = self._load_cached_gdelt_data(cache_date_str)
+        else:
+            print("→ Force refresh enabled, fetching fresh data...", flush=True)
+        
+        # Fetch oil data if not cached
+        if oil_data is None:
+            print("→ Fetching fresh oil price data...", flush=True)
+            oil_data = self.fetch_oil_prices(days_back=90)
+            print(f"Fetched oil prices: {len(oil_data)} days")
+            self._save_cached_oil_data(oil_data, cache_date_str)
+        else:
+            print(f"Using cached oil prices: {len(oil_data)} days")
+        
+        # Fetch GDELT data if not cached
+        if gdelt_data_list is None:
+            print("→ Fetching fresh GDELT data (this will take a few minutes)...", flush=True)
+            gdelt_data_list = []
+            for days_ago in range(30, -1, -1):
+                current_date = target_dt_naive - timedelta(days=days_ago)
+                print(f"Fetching GDELT data for {current_date.date()}...", flush=True)
+                
+                gdelt_df = self.fetch_gdelt_for_date(current_date)
+                if not gdelt_df.empty:
+                    processed = self.process_gdelt_data(gdelt_df, current_date)
+                    if processed:
+                        gdelt_data_list.append(processed)
+                
+                time.sleep(1)
+            
+            print(f"Processed GDELT data for {len(gdelt_data_list)} days")
+            self._save_cached_gdelt_data(gdelt_data_list, cache_date_str)
+        else:
+            print(f"Using cached GDELT data: {len(gdelt_data_list)} days")
+        
+        final_df = self.align_and_engineer_features(gdelt_data_list, oil_data)
+        
+        if final_df.empty:
+            raise ValueError("No data generated from pipeline")
+        
+        output_filename = f"final_aligned_data_{target_dt.date().strftime('%Y%m%d')}.json.gz"
+        output_path = f"{config.GCS_PROCESSED_PATH}{output_filename}"
+        
+        records = final_df.to_dict('records')
+        json_data = json.dumps(records, ensure_ascii=False, default=str)
+        compressed_data = gzip.compress(json_data.encode('utf-8'))
+        
+        blob = self.bucket.blob(output_path)
+        blob.upload_from_string(compressed_data, content_type='application/gzip')
+        
+        print(f"Saved processed data to GCS: {output_path}")
+        print(f"Total records: {len(records)}")
+        print(f"Date range: {final_df['date'].min()} to {final_df['date'].max()}")
+        
+        return output_path

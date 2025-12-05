@@ -1,287 +1,303 @@
-import { useState } from 'react';
-import { 
-  Network, 
-  Settings, 
-  BarChart3, 
-  Layers, 
-  Info,
-  Play,
-  Pause,
-  RotateCcw 
-} from 'lucide-react';
-import { GraphVisualization } from '../components/ui/GraphVisualization';
-import { useUIStore } from '../store';
+import { useEffect, useState, useRef } from 'react';
+import cytoscape from 'cytoscape';
+import type { Core, EdgeDefinition, NodeDefinition } from 'cytoscape';
+import { getPredictionHistory } from '../services/api';
+import type { PredictionRecord } from '../types/api';
 
-/**
- * Graph Network page component
- * Features:
- * - Interactive graph visualization with Cytoscape.js
- * - Graph layout controls
- * - Node and edge filtering
- * - Real-time simulation controls
- * - Graph statistics and metrics
- * - Export functionality
- */
-export const GraphView: React.FC = () => {
-  const { graphSettings, updateGraphSettings } = useUIStore();
-  const [isSimulating, setIsSimulating] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+export default function GraphView() {
+    const [history, setHistory] = useState<PredictionRecord[]>([]);
+    const [selectedDate, setSelectedDate] = useState(0);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const cyRef = useRef<Core | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
-  // Set default grid layout
-  const handleLayoutChange = () => {
-    updateGraphSettings({ layout: 'grid' });
-  };
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setLoading(true);
+                const data = await getPredictionHistory();
+                setHistory(data);
+                setError(null);
+            } catch (err) {
+                setError(err instanceof Error ? err.message : 'Failed to load data');
+            } finally {
+                setLoading(false);
+            }
+        };
 
-  const toggleSimulation = () => {
-    setIsSimulating(!isSimulating);
-    // TODO: Implement real-time simulation when backend is ready
-    console.log('Simulation', isSimulating ? 'stopped' : 'started');
-  };
+        fetchData();
+    }, []);
 
-  const resetGraph = () => {
-    // TODO: Reset graph to initial state
-    console.log('Resetting graph...');
-  };
+    useEffect(() => {
+        if (!containerRef.current || history.length === 0) return;
 
-  return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold gradient-text flex items-center space-x-3">
-            <Network size={32} />
-            <span>Graph Neural Network</span>
-          </h1>
-          <p className="text-gray-400 mt-2">
-            Interactive visualization of country-event relationships and oil price correlations
-          </p>
-        </div>
+        const record = history[selectedDate];
+        if (!record) return;
 
-        {/* Control buttons */}
-        <div className="flex items-center space-x-3">
-          <button
-            onClick={toggleSimulation}
-            className={`flex items-center space-x-2 px-4 py-2 rounded-lg font-medium transition-all ${
-              isSimulating 
-                ? 'bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30'
-                : 'bg-green-500/20 text-green-300 border border-green-500/30 hover:bg-green-500/30'
-            }`}
-          >
-            {isSimulating ? <Pause size={16} /> : <Play size={16} />}
-            <span>{isSimulating ? 'Stop' : 'Start'} Simulation</span>
-          </button>
+        // Destroy existing graph
+        if (cyRef.current) {
+            cyRef.current.destroy();
+        }
 
-          <button
-            onClick={resetGraph}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg font-medium bg-gray-500/20 text-gray-300 border border-gray-500/30 hover:bg-gray-500/30 transition-all"
-          >
-            <RotateCcw size={16} />
-            <span>Reset</span>
-          </button>
+        // Create graph nodes and edges
+        const nodes: NodeDefinition[] = [
+            {
+                data: {
+                    id: 'oil',
+                    label: 'WTI Crude Oil',
+                    type: 'center',
+                    value: record.predicted_close,
+                },
+            },
+        ];
 
-          <button
-            onClick={() => setShowSettings(!showSettings)}
-            className="flex items-center space-x-2 px-4 py-2 rounded-lg font-medium bg-primary-500/20 text-primary-300 border border-primary-500/30 hover:bg-primary-500/30 transition-all"
-          >
-            <Settings size={16} />
-            <span>Settings</span>
-          </button>
-        </div>
-      </div>
+        const edges: EdgeDefinition[] = [];
 
-      {/* Graph Statistics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Total Nodes</p>
-              <p className="text-xl font-bold text-white">32</p>
+        // Add top contributors as nodes
+        record.top_contributors.forEach((contributor: any, idx: number) => {
+            nodes.push({
+                data: {
+                    id: `country-${idx}`,
+                    label: contributor.country,
+                    type: 'contributor',
+                    contribution: contributor.contribution,
+                    percentage: contributor.percentage,
+                    attention: contributor.attention_weight,
+                },
+            });
+
+            edges.push({
+                data: {
+                    id: `edge-${idx}`,
+                    source: `country-${idx}`,
+                    target: 'oil',
+                    weight: Math.abs(contributor.percentage),
+                    contribution: contributor.contribution,
+                },
+            });
+        });
+
+        // Initialize Cytoscape
+        cyRef.current = cytoscape({
+            container: containerRef.current,
+            elements: {
+                nodes,
+                edges,
+            },
+            style: [
+                {
+                    selector: 'node[type="center"]',
+                    style: {
+                        'background-color': '#3b82f6',
+                        label: 'data(label)',
+                        color: '#fff',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        width: 80,
+                        height: 80,
+                        'font-size': '14px',
+                        'font-weight': 'bold',
+                    },
+                },
+                {
+                    selector: 'node[type="contributor"]',
+                    style: {
+                        'background-color': (ele: any) => {
+                            const contribution = ele.data('contribution');
+                            return contribution >= 0 ? '#10b981' : '#ef4444';
+                        },
+                        label: 'data(label)',
+                        color: '#fff',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        width: (ele: any) => {
+                            const percentage = Math.abs(ele.data('percentage'));
+                            return Math.max(30, Math.min(60, percentage * 3));
+                        },
+                        height: (ele: any) => {
+                            const percentage = Math.abs(ele.data('percentage'));
+                            return Math.max(30, Math.min(60, percentage * 3));
+                        },
+                        'font-size': '11px',
+                        'font-weight': 'bold',
+                        'text-wrap': 'wrap',
+                        'text-max-width': '100px',
+                    },
+                },
+                {
+                    selector: 'edge',
+                    style: {
+                        width: (ele: any) => {
+                            const weight = ele.data('weight');
+                            return Math.max(1, Math.min(8, weight / 3));
+                        },
+                        'line-color': (ele: any) => {
+                            const contribution = ele.data('contribution');
+                            return contribution >= 0 ? '#10b981' : '#ef4444';
+                        },
+                        'target-arrow-color': (ele: any) => {
+                            const contribution = ele.data('contribution');
+                            return contribution >= 0 ? '#10b981' : '#ef4444';
+                        },
+                        'target-arrow-shape': 'triangle',
+                        'curve-style': 'bezier',
+                    },
+                },
+            ],
+            layout: {
+                name: 'circle',
+                radius: 250,
+            },
+            userZoomingEnabled: true,
+            userPanningEnabled: true,
+            boxSelectionEnabled: false,
+        });
+
+        // Add tooltips on hover
+        cyRef.current.on('mouseover', 'node[type="contributor"]', (event: any) => {
+            const node = event.target;
+            const data = node.data();
+            node.style({
+                'border-width': 3,
+                'border-color': '#fbbf24',
+            });
+            // You could add a custom tooltip here
+            console.log(`${data.label}: ${data.contribution >= 0 ? '+' : ''}$${data.contribution.toFixed(3)} (${data.percentage.toFixed(2)}%)`);
+        });
+
+        cyRef.current.on('mouseout', 'node[type="contributor"]', (event: any) => {
+            event.target.style({
+                'border-width': 0,
+            });
+        });
+
+        return () => {
+            if (cyRef.current) {
+                cyRef.current.destroy();
+            }
+        };
+    }, [history, selectedDate]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-xl text-gray-600">Loading graph...</div>
             </div>
-            <div className="p-2 bg-blue-500/20 rounded-lg">
-              <Network className="text-blue-400" size={20} />
-            </div>
-          </div>
-        </div>
+        );
+    }
 
-        <div className="card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Connections</p>
-              <p className="text-xl font-bold text-white">68</p>
+    if (error) {
+        return (
+            <div className="flex items-center justify-center min-h-screen">
+                <div className="text-xl text-red-600">Error: {error}</div>
             </div>
-            <div className="p-2 bg-purple-500/20 rounded-lg">
-              <Layers className="text-purple-400" size={20} />
-            </div>
-          </div>
-        </div>
+        );
+    }
 
-        <div className="card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">Avg. Correlation</p>
-              <p className="text-xl font-bold text-white">0.73</p>
-            </div>
-            <div className="p-2 bg-green-500/20 rounded-lg">
-              <BarChart3 className="text-green-400" size={20} />
-            </div>
-          </div>
-        </div>
+    const currentRecord = history[selectedDate];
 
-        <div className="card">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-gray-400 text-sm">High Impact Events</p>
-              <p className="text-xl font-bold text-white">4</p>
-            </div>
-            <div className="p-2 bg-red-500/20 rounded-lg">
-              <Info className="text-red-400" size={20} />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Graph Visualization */}
-        <div className="lg:col-span-3">
-          <div className="card p-2">
-            <GraphVisualization height="700px" />
-          </div>
-        </div>
-
-        {/* Side Panel */}
-        <div className="space-y-6">
-          {/* Legend */}
-          <div className="card">
-            <h3 className="text-lg font-semibold text-white mb-4">Legend</h3>
-            
-            <div className="space-y-3">
-              {/* Node Types */}
-              <div>
-                <p className="text-sm text-gray-400 mb-2">Node Types</p>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-4 h-4 bg-orange-500 rounded-full"></div>
-                    <span className="text-sm text-gray-300">Countries</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-4 h-4 bg-blue-500 rounded-full"></div>
-                    <span className="text-sm text-gray-300">Events</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-4 h-4 bg-green-500 rounded-full"></div>
-                    <span className="text-sm text-gray-300">Price Points</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Edge Types */}
-              <div className="border-t border-white/10 pt-3">
-                <p className="text-sm text-gray-400 mb-2">Edge Strength</p>
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-3">
-                    <div className="w-6 h-1 bg-red-500 rounded"></div>
-                    <span className="text-sm text-gray-300">Strong (80%+)</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-6 h-1 bg-yellow-500 rounded"></div>
-                    <span className="text-sm text-gray-300">Medium (60-80%)</span>
-                  </div>
-                  <div className="flex items-center space-x-3">
-                    <div className="w-6 h-1 bg-gray-500 rounded"></div>
-                    <span className="text-sm text-gray-300">Weak (&lt;60%)</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Instructions */}
-          <div className="card">
-            <h3 className="text-lg font-semibold text-white mb-4">Instructions</h3>
-            <div className="space-y-2 text-sm text-gray-300">
-              <p>• Click nodes to view details</p>
-              <p>• Drag to pan the graph</p>
-              <p>• Scroll to zoom in/out</p>
-              <p>• Hover over connections to see relationships</p>
-              <p>• Use filters to focus on specific node types</p>
-            </div>
-          </div>
-
-          {/* Graph Settings */}
-          {showSettings && (
-            <div className="card">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center space-x-2">
-                <Settings size={18} />
-                <span>Settings</span>
-              </h3>
-              
-              <div className="space-y-4">
-                {/* Show Labels Toggle */}
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-gray-300">Show Labels</label>
-                  <button
-                    onClick={() => updateGraphSettings({ showLabels: !graphSettings.showLabels })}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${
-                      graphSettings.showLabels ? 'bg-primary-500' : 'bg-gray-600'
-                    }`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      graphSettings.showLabels ? 'translate-x-7' : 'translate-x-1'
-                    }`} />
-                  </button>
+    return (
+        <div className="min-h-screen bg-gray-50 p-6">
+            <div className="max-w-7xl mx-auto">
+                {/* Header */}
+                <div className="mb-8">
+                    <h1 className="text-4xl font-bold text-gray-900 mb-2">
+                        Contributor Network Graph
+                    </h1>
+                    <p className="text-gray-600">
+                        Interactive visualization of country contributions to oil price predictions
+                    </p>
                 </div>
 
-                {/* Animations Toggle */}
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-gray-300">Animations</label>
-                  <button
-                    onClick={() => updateGraphSettings({ animationsEnabled: !graphSettings.animationsEnabled })}
-                    className={`relative w-12 h-6 rounded-full transition-colors ${
-                      graphSettings.animationsEnabled ? 'bg-primary-500' : 'bg-gray-600'
-                    }`}
-                  >
-                    <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${
-                      graphSettings.animationsEnabled ? 'translate-x-7' : 'translate-x-1'
-                    }`} />
-                  </button>
+                {/* Info Panel */}
+                {currentRecord && (
+                    <div className="bg-white rounded-lg shadow p-6 mb-6">
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <div>
+                                <div className="text-sm text-gray-600">Prediction Date</div>
+                                <div className="text-lg font-semibold text-gray-900">
+                                    {new Date(currentRecord.prediction_for_date).toLocaleDateString()}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-sm text-gray-600">Predicted Price</div>
+                                <div className="text-lg font-semibold text-blue-600">
+                                    ${currentRecord.predicted_close.toFixed(2)}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-sm text-gray-600">Predicted Change</div>
+                                <div className={`text-lg font-semibold ${currentRecord.predicted_delta >= 0 ? 'text-green-600' : 'text-red-600'
+                                    }`}>
+                                    {currentRecord.predicted_delta >= 0 ? '+' : ''}
+                                    ${currentRecord.predicted_delta.toFixed(2)}
+                                </div>
+                            </div>
+                            <div>
+                                <div className="text-sm text-gray-600">Contributors</div>
+                                <div className="text-lg font-semibold text-gray-900">
+                                    {currentRecord.top_contributors.length}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* Graph Container */}
+                <div className="bg-white rounded-lg shadow p-6 mb-6">
+                    <div
+                        ref={containerRef}
+                        className="w-full bg-gray-50 rounded-lg border border-gray-200"
+                        style={{ height: '600px' }}
+                    />
                 </div>
 
-                {/* Node Size Slider */}
-                <div>
-                  <label className="text-sm text-gray-300 block mb-2">
-                    Node Size: {graphSettings.nodeSize}px
-                  </label>
-                  <input
-                    type="range"
-                    min="10"
-                    max="50"
-                    value={graphSettings.nodeSize}
-                    onChange={(e) => updateGraphSettings({ nodeSize: Number(e.target.value) })}
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-                  />
+                {/* Date Slider */}
+                <div className="bg-white rounded-lg shadow p-6">
+                    <div className="mb-4">
+                        <label className="block text-sm font-semibold text-gray-700 mb-2">
+                            Select Prediction Date ({history.length} available)
+                        </label>
+                        <input
+                            type="range"
+                            min="0"
+                            max={history.length - 1}
+                            value={selectedDate}
+                            onChange={(e) => setSelectedDate(parseInt(e.target.value))}
+                            className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer"
+                        />
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-600">
+                        <span>Most Recent</span>
+                        <span>
+                            {currentRecord && new Date(currentRecord.prediction_for_date).toLocaleDateString()}
+                        </span>
+                        <span>Oldest</span>
+                    </div>
                 </div>
 
-                {/* Edge Width Slider */}
-                <div>
-                  <label className="text-sm text-gray-300 block mb-2">
-                    Edge Width: {graphSettings.edgeWidth}px
-                  </label>
-                  <input
-                    type="range"
-                    min="1"
-                    max="5"
-                    value={graphSettings.edgeWidth}
-                    onChange={(e) => updateGraphSettings({ edgeWidth: Number(e.target.value) })}
-                    className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider"
-                  />
+                {/* Legend */}
+                <div className="bg-white rounded-lg shadow p-6 mt-6">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-4">Legend</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full bg-green-500"></div>
+                            <span className="text-sm text-gray-700">Positive Contribution (Price Increase)</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="w-6 h-6 rounded-full bg-red-500"></div>
+                            <span className="text-sm text-gray-700">Negative Contribution (Price Decrease)</span>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="text-sm text-gray-700">Node Size = Impact Percentage</div>
+                        </div>
+                        <div className="flex items-center gap-3">
+                            <div className="text-sm text-gray-700">Edge Width = Contribution Strength</div>
+                        </div>
+                    </div>
                 </div>
-              </div>
             </div>
-          )}
         </div>
-      </div>
-    </div>
-  );
-};
-
+    );
+}
