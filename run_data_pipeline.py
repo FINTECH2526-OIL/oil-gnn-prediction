@@ -12,6 +12,7 @@ def main():
     parser = argparse.ArgumentParser(description='Run daily data pipeline manually')
     parser.add_argument('--date', type=str, help='Target date (YYYY-MM-DD), defaults to yesterday')
     parser.add_argument('--days-back', type=int, default=30, help='Number of historical days to fetch')
+    parser.add_argument('--force-refresh', action='store_true', help='Ignore cached inputs and refetch from sources')
     
     args = parser.parse_args()
     
@@ -27,7 +28,7 @@ def main():
     pipeline = DailyDataPipeline()
     
     try:
-        output_path = pipeline.run_daily_update(target_date)
+        output_path = pipeline.run_daily_update(target_date, force_refresh=args.force_refresh)
         inference_result = run_daily_inference()
         
         print("=" * 60)

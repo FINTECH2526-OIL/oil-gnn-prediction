@@ -100,6 +100,7 @@ class DailyDataPipeline:
         if not self.alpha_vantage_key:
             raise ValueError("ALPHA_VANTAGE_API_KEY environment variable not set")
         
+        print("Fetching WTI prices from Alpha Vantage...", flush=True)
         url = f"https://www.alphavantage.co/query"
         params = {
             "function": "WTI",
@@ -114,15 +115,26 @@ class DailyDataPipeline:
             raise ValueError(f"Alpha Vantage API error: {data}")
         
         records = []
+        skipped_wti = 0
         for item in data["data"]:
+            value = item.get("value")
+            try:
+                price = float(value)
+            except (TypeError, ValueError):
+                # Skip malformed or missing price entries returned as '.' or None
+                skipped_wti += 1
+                continue
+
             records.append({
                 "date": pd.to_datetime(item["date"]),
-                "wti_price": float(item["value"])
+                "wti_price": price
             })
+        print(f"WTI records kept: {len(records)}, skipped: {skipped_wti}", flush=True)
         
         df = pd.DataFrame(records)
         df = df.sort_values("date").reset_index(drop=True)
         
+        print("Fetching Brent prices from Alpha Vantage...", flush=True)
         url_brent = f"https://www.alphavantage.co/query"
         params_brent = {
             "function": "BRENT",
@@ -135,14 +147,26 @@ class DailyDataPipeline:
         
         if "data" in data_brent:
             brent_records = []
+            skipped_brent = 0
             for item in data_brent["data"]:
+                value = item.get("value")
+                try:
+                    price = float(value)
+                except (TypeError, ValueError):
+                    # Alpha Vantage occasionally emits '.' when data is unavailable
+                    skipped_brent += 1
+                    continue
+
                 brent_records.append({
                     "date": pd.to_datetime(item["date"]),
-                    "brent_price": float(item["value"])
+                    "brent_price": price
                 })
             
             df_brent = pd.DataFrame(brent_records)
             df = df.merge(df_brent, on="date", how="left")
+            print(f"Brent records kept: {len(brent_records)}, skipped: {skipped_brent}", flush=True)
+        else:
+            print(f"Alpha Vantage Brent response missing data field: {data_brent}", flush=True)
         
         return df
     
@@ -272,6 +296,7 @@ class DailyDataPipeline:
         
         oil_data['date'] = pd.to_datetime(oil_data['date'])
         
+        print("Aligning oil and GDELT features...", flush=True)
         merged = oil_data.merge(gdelt_df, on='date', how='left')
         
         for col in ['wti_price', 'brent_price']:
@@ -343,35 +368,137 @@ class DailyDataPipeline:
         
         df['article_count_lag1'] = df.groupby('country_iso3')['article_count'].shift(1)
         df['article_count_change'] = df.groupby('country_iso3')['article_count'].pct_change()
-        
-        df['tone_lag1'] = df.groupby('country_iso3')['avg_tone'].shift(1)
-        df['tone_change'] = df.groupby('country_iso3')['avg_tone'].diff()
-        
+
+        # Ensure sentiment fields are consistently available for feature generation
+        df['avg_sentiment'] = pd.to_numeric(df.get('avg_sentiment', 0), errors='coerce').fillna(0)
+        df['sentiment_lag1'] = df.groupby('country_iso3')['avg_sentiment'].shift(1)
+        df['sentiment_lag7'] = df.groupby('country_iso3')['avg_sentiment'].shift(7)
+        df['sentiment_change'] = df.groupby('country_iso3')['avg_sentiment'].diff()
+
+        # Backward-compatible aliases for legacy feature names
+        df['avg_tone'] = df['avg_sentiment']
+        df['tone_lag1'] = df['sentiment_lag1']
+        df['tone_change'] = df['sentiment_change']
+
+        df.fillna(0, inplace=True)
+
+        print(f"Engineered records: {len(df)}", flush=True)
         return df
     
-    def run_daily_update(self, target_date: Optional[datetime] = None) -> str:
+    def _load_cached_oil_data(self, date_str: str) -> Optional[pd.DataFrame]:
+        """Load cached oil data from GCS."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_oil.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            if not blob.exists():
+                return None
+            
+            data = blob.download_as_bytes()
+            decompressed = gzip.decompress(data)
+            oil_data = json.loads(decompressed.decode('utf-8'))
+            df = pd.DataFrame(oil_data)
+            df['date'] = pd.to_datetime(df['date'])
+            print(f"✓ Loaded cached oil data from {cache_path}", flush=True)
+            return df
+        except Exception as e:
+            print(f"Failed to load cached oil data: {e}", flush=True)
+            return None
+
+    def _save_cached_oil_data(self, oil_data: pd.DataFrame, date_str: str):
+        """Save oil data to GCS cache."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_oil.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            records = oil_data.to_dict('records')
+            json_data = json.dumps(records, default=str).encode('utf-8')
+            compressed = gzip.compress(json_data)
+            
+            blob.upload_from_string(compressed, content_type='application/gzip')
+            print(f"✓ Saved oil data to cache: {cache_path}", flush=True)
+        except Exception as e:
+            print(f"Failed to save oil data to cache: {e}", flush=True)
+
+    def _load_cached_gdelt_data(self, date_str: str) -> Optional[List[Dict]]:
+        """Load cached GDELT data from GCS."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_gdelt.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            if not blob.exists():
+                return None
+            
+            data = blob.download_as_bytes()
+            decompressed = gzip.decompress(data)
+            gdelt_data = json.loads(decompressed.decode('utf-8'))
+            print(f"✓ Loaded cached GDELT data from {cache_path}", flush=True)
+            return gdelt_data
+        except Exception as e:
+            print(f"Failed to load cached GDELT data: {e}", flush=True)
+            return None
+
+    def _save_cached_gdelt_data(self, gdelt_data_list: List[Dict], date_str: str):
+        """Save GDELT data to GCS cache."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}cache/{date_str}_gdelt.json.gz"
+            blob = self.bucket.blob(cache_path)
+            
+            json_data = json.dumps(gdelt_data_list, default=str).encode('utf-8')
+            compressed = gzip.compress(json_data)
+            
+            blob.upload_from_string(compressed, content_type='application/gzip')
+            print(f"✓ Saved GDELT data to cache: {cache_path}", flush=True)
+        except Exception as e:
+            print(f"Failed to save GDELT data to cache: {e}", flush=True)
+
+    def run_daily_update(self, target_date: Optional[datetime] = None, force_refresh: bool = False) -> str:
         target_dt = _resolve_target_datetime(target_date)
         target_dt_naive = target_dt.replace(tzinfo=None)
 
         print(f"Running daily data pipeline for {target_dt.date()}")
 
-        oil_data = self.fetch_oil_prices(days_back=90)
-        print(f"Fetched oil prices: {len(oil_data)} days")
+        # Try to load cached data first
+        cache_date_str = target_dt.date().strftime('%Y%m%d')
+        oil_data = None
+        gdelt_data_list = None
         
-        gdelt_data_list = []
-        for days_ago in range(30, -1, -1):
-            current_date = target_dt_naive - timedelta(days=days_ago)
-            print(f"Fetching GDELT data for {current_date.date()}...")
-            
-            gdelt_df = self.fetch_gdelt_for_date(current_date)
-            if not gdelt_df.empty:
-                processed = self.process_gdelt_data(gdelt_df, current_date)
-                if processed:
-                    gdelt_data_list.append(processed)
-            
-            time.sleep(1)
+        if not force_refresh:
+            print("→ Checking for cached data in GCS...", flush=True)
+            oil_data = self._load_cached_oil_data(cache_date_str)
+            gdelt_data_list = self._load_cached_gdelt_data(cache_date_str)
+        else:
+            print("→ Force refresh enabled, fetching fresh data...", flush=True)
         
-        print(f"Processed GDELT data for {len(gdelt_data_list)} days")
+        # Fetch oil data if not cached
+        if oil_data is None:
+            print("→ Fetching fresh oil price data...", flush=True)
+            oil_data = self.fetch_oil_prices(days_back=90)
+            print(f"Fetched oil prices: {len(oil_data)} days")
+            self._save_cached_oil_data(oil_data, cache_date_str)
+        else:
+            print(f"Using cached oil prices: {len(oil_data)} days")
+        
+        # Fetch GDELT data if not cached
+        if gdelt_data_list is None:
+            print("→ Fetching fresh GDELT data (this will take a few minutes)...", flush=True)
+            gdelt_data_list = []
+            for days_ago in range(30, -1, -1):
+                current_date = target_dt_naive - timedelta(days=days_ago)
+                print(f"Fetching GDELT data for {current_date.date()}...", flush=True)
+                
+                gdelt_df = self.fetch_gdelt_for_date(current_date)
+                if not gdelt_df.empty:
+                    processed = self.process_gdelt_data(gdelt_df, current_date)
+                    if processed:
+                        gdelt_data_list.append(processed)
+                
+                time.sleep(1)
+            
+            print(f"Processed GDELT data for {len(gdelt_data_list)} days")
+            self._save_cached_gdelt_data(gdelt_data_list, cache_date_str)
+        else:
+            print(f"Using cached GDELT data: {len(gdelt_data_list)} days")
         
         final_df = self.align_and_engineer_features(gdelt_data_list, oil_data)
         
