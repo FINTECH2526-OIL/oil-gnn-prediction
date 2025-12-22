@@ -7,6 +7,7 @@ from typing import Optional, Dict, List
 import traceback
 import json
 import gzip
+import requests
 
 from .config import config
 from .data_loader import DataLoader
@@ -240,6 +241,120 @@ async def get_prediction_history(
         # Return empty list if file doesn't exist yet or any error
         print(f"Error fetching history: {e}")
         return []
+
+@app.post("/update")
+async def update_predictions(force_refresh: bool = False):
+    try:
+        import subprocess
+        from datetime import date
+        import requests
+        
+        today = date.today()
+        print(f"[UPDATE] Today is {today}, checking for new data...")
+        
+        alpha_key = config.ALPHA_VANTAGE_API_KEY
+        response = requests.get(
+            f"https://www.alphavantage.co/query?function=WTI&interval=daily&apikey={alpha_key}",
+            timeout=10
+        )
+        av_data = response.json()
+        
+        if "data" not in av_data or not av_data["data"]:
+            return {
+                "status": "no_new_data",
+                "message": "Alpha Vantage returned no data",
+                "latest_alpha_vantage_date": None
+            }
+        
+        latest_av_date = None
+        for item in av_data["data"]:
+            try:
+                if item.get("value") and item["value"] != ".":
+                    latest_av_date = item["date"]
+                    break
+            except:
+                continue
+        
+        if not latest_av_date:
+            return {
+                "status": "no_new_data",
+                "message": "No valid oil price data in Alpha Vantage",
+                "latest_alpha_vantage_date": None
+            }
+        
+        print(f"[UPDATE] Latest Alpha Vantage date: {latest_av_date}")
+        
+        client = storage.Client()
+        bucket = client.bucket(config.GCS_BUCKET_NAME)
+        blobs = list(bucket.list_blobs(prefix='processed_data/final_aligned_data_'))
+        if not blobs:
+            latest_processed_date = None
+        else:
+            latest_blob = max(blobs, key=lambda b: b.name)
+            date_str = latest_blob.name.split('_')[-1].replace('.json.gz', '')
+            latest_processed_date = f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+        
+        print(f"[UPDATE] Latest processed data date: {latest_processed_date}")
+        
+        needs_update = force_refresh or (latest_processed_date is None) or (latest_av_date > latest_processed_date)
+        
+        if not needs_update:
+            print("[UPDATE] No new data, running multi-step forecast only...")
+            result = subprocess.run(
+                ["python", "/workspace/multi_step_forecast.py"],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+            
+            if result.returncode == 0:
+                return {
+                    "status": "forecast_updated",
+                    "message": "Extended predictions using existing data",
+                    "latest_alpha_vantage_date": latest_av_date,
+                    "latest_processed_date": latest_processed_date
+                }
+            else:
+                raise HTTPException(status_code=500, detail=f"Forecast failed: {result.stderr}")
+        
+        print(f"[UPDATE] New data available! Running pipeline for {latest_av_date}...")
+        pipeline_result = subprocess.run(
+            ["python", "/workspace/run_data_pipeline.py", "--date", latest_av_date],
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 minutes for full pipeline
+        )
+        
+        if pipeline_result.returncode != 0:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Pipeline failed: {pipeline_result.stderr}"
+            )
+        
+        print("[UPDATE] Running multi-step forecast...")
+        forecast_result = subprocess.run(
+            ["python", "/workspace/multi_step_forecast.py"],
+            capture_output=True,
+            text=True,
+            timeout=120
+        )
+        
+        if forecast_result.returncode != 0:
+            print(f"[UPDATE] WARNING: Forecast failed but pipeline succeeded: {forecast_result.stderr}")
+        
+        return {
+            "status": "updated",
+            "message": f"Successfully updated with data through {latest_av_date}",
+            "latest_alpha_vantage_date": latest_av_date,
+            "previous_processed_date": latest_processed_date,
+            "new_processed_date": latest_av_date
+        }
+    
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Update timeout")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Update error: {str(e)}")
+
 
 @app.post("/backfill")
 async def backfill_history(days: int = 30, start_date: Optional[str] = None, dry_run: bool = False):
