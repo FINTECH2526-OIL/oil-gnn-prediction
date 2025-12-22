@@ -483,8 +483,16 @@ class DailyDataPipeline:
         if gdelt_data_list is None:
             print("→ Fetching fresh GDELT data (this will take a few minutes)...", flush=True)
             gdelt_data_list = []
+            
+            # ALWAYS fetch GDELT up to TODAY, not just up to target_dt
+            # This ensures we have the latest news data even if oil prices lag
+            today = datetime.now()
+            actual_end_date = today if today > target_dt_naive else target_dt_naive
+            
+            print(f"→ Fetching GDELT from {(actual_end_date - timedelta(days=30)).date()} to {actual_end_date.date()}")
+            
             for days_ago in range(30, -1, -1):
-                current_date = target_dt_naive - timedelta(days=days_ago)
+                current_date = actual_end_date - timedelta(days=days_ago)
                 print(f"Fetching GDELT data for {current_date.date()}...", flush=True)
                 
                 gdelt_df = self.fetch_gdelt_for_date(current_date)
