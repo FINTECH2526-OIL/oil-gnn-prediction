@@ -248,11 +248,19 @@ async def update_predictions(force_refresh: bool = False):
         import subprocess
         from datetime import date
         import requests
+        import os
         
         today = date.today()
         print(f"[UPDATE] Today is {today}, checking for new data...")
         
-        alpha_key = config.ALPHA_VANTAGE_API_KEY
+        # Get API key from environment
+        alpha_key = os.environ.get("ALPHA_VANTAGE_API_KEY")
+        if not alpha_key:
+            raise HTTPException(
+                status_code=500,
+                detail="ALPHA_VANTAGE_API_KEY not configured"
+            )
+        
         response = requests.get(
             f"https://www.alphavantage.co/query?function=WTI&interval=daily&apikey={alpha_key}",
             timeout=10
