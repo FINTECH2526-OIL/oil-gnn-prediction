@@ -2,6 +2,9 @@ import sys
 import os
 from datetime import datetime, timedelta
 
+# Add both possible paths for Docker and local
+sys.path.insert(0, '/app')
+sys.path.insert(0, '/app/gnn-backend')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'gnn-backend'))
 
 from app.daily_data_pipeline import DailyDataPipeline

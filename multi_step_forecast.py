@@ -14,6 +14,9 @@ import json
 import gzip
 from google.cloud import storage
 
+# Add both possible paths for Docker and local
+sys.path.insert(0, '/app')
+sys.path.insert(0, '/app/gnn-backend')
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'gnn-backend'))
 
 from app.config import config
