@@ -73,3 +73,15 @@ export async function triggerBackfill(options: {
 
   return fetchApi(`/backfill?${params.toString()}`, { method: 'POST' });
 }
+
+// Update predictions with latest data
+export async function updatePredictions(forceRefresh = false): Promise<{
+  status: string;
+  message: string;
+  latest_alpha_vantage_date: string | null;
+  latest_processed_date?: string;
+  new_processed_date?: string;
+}> {
+  const params = forceRefresh ? '?force_refresh=true' : '';
+  return fetchApi(`/update${params}`, { method: 'POST' });
+}

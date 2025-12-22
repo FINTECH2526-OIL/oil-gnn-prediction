@@ -11,7 +11,7 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions } from 'chart.js';
-import { getPredictionHistory, checkHealth, triggerBackfill } from '../services/api';
+import { getPredictionHistory, checkHealth, triggerBackfill, updatePredictions } from '../services/api';
 import type { PredictionRecord } from '../types/api';
 
 ChartJS.register(
@@ -35,6 +35,53 @@ export default function Dashboard() {
     const [dateRange, setDateRange] = useState<DateRange>(30);
     const [apiStatus, setApiStatus] = useState<'healthy' | 'unhealthy' | 'checking'>('checking');
     const [backfillStatus, setBackfillStatus] = useState<'idle' | 'running' | 'failed' | 'success'>('idle');
+    const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'success' | 'error'>('idle');
+    const [updateMessage, setUpdateMessage] = useState<string>('');
+
+    const handleUpdateData = async () => {
+        try {
+            setUpdateStatus('checking');
+            setUpdateMessage('Checking for new data...');
+            
+            const result = await updatePredictions(false);
+            
+            setUpdateStatus('updating');
+            setUpdateMessage(result.message || 'Updating predictions...');
+            
+            // Wait a bit for processing
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Refresh history
+            const today = new Date();
+            const startDate = new Date(today);
+            startDate.setDate(startDate.getDate() - 30);
+            const startDateIso = startDate.toISOString().split('T')[0];
+            
+            const newData = await getPredictionHistory({
+                days: DEFAULT_HISTORY_WINDOW,
+                startDate: startDateIso,
+            });
+            
+            setHistory(newData);
+            setUpdateStatus('success');
+            setUpdateMessage('Successfully updated! Showing latest predictions.');
+            
+            // Clear success message after 5 seconds
+            setTimeout(() => {
+                setUpdateStatus('idle');
+                setUpdateMessage('');
+            }, 5000);
+        } catch (err) {
+            setUpdateStatus('error');
+            setUpdateMessage(err instanceof Error ? err.message : 'Update failed');
+            
+            // Clear error after 5 seconds
+            setTimeout(() => {
+                setUpdateStatus('idle');
+                setUpdateMessage('');
+            }, 5000);
+        }
+    };
 
     useEffect(() => {
         const fetchData = async () => {
@@ -187,15 +234,92 @@ export default function Dashboard() {
             <div className="max-w-7xl mx-auto">
                 {/* Header */}
                 <div className="mb-8">
-                    <h1 className="text-4xl font-bold text-gray-900 mb-2">
-                        Oil Price Prediction Dashboard
-                    </h1>
-                    <div className="flex items-center gap-2">
-                        <div className={`w-3 h-3 rounded-full ${apiStatus === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
-                        <span className="text-sm text-gray-600">
-                            API Status: {apiStatus === 'healthy' ? 'Healthy' : 'Unhealthy'}
-                        </span>
+                    <div className="flex items-center justify-between mb-4">
+                        <h1 className="text-4xl font-bold text-gray-900">
+                            Oil Price Prediction Dashboard
+                        </h1>
+                        
+                        {/* Update Button */}
+                        <button
+                            onClick={handleUpdateData}
+                            disabled={updateStatus === 'checking' || updateStatus === 'updating'}
+                            className={`
+                                flex items-center gap-2 px-6 py-3 rounded-lg font-semibold
+                                transition-all duration-200 shadow-md hover:shadow-lg
+                                ${updateStatus === 'idle' 
+                                    ? 'bg-blue-600 hover:bg-blue-700 text-white' 
+                                    : updateStatus === 'success'
+                                    ? 'bg-green-600 text-white'
+                                    : updateStatus === 'error'
+                                    ? 'bg-red-600 text-white'
+                                    : 'bg-gray-400 text-white cursor-not-allowed'
+                                }
+                            `}
+                        >
+                            {updateStatus === 'checking' && (
+                                <>
+                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Checking...
+                                </>
+                            )}
+                            {updateStatus === 'updating' && (
+                                <>
+                                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                                    </svg>
+                                    Updating...
+                                </>
+                            )}
+                            {updateStatus === 'success' && (
+                                <>
+                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path>
+                                    </svg>
+                                    Updated!
+                                </>
+                            )}
+                            {updateStatus === 'error' && (
+                                <>
+                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+                                    </svg>
+                                    Failed
+                                </>
+                            )}
+                            {updateStatus === 'idle' && (
+                                <>
+                                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+                                    </svg>
+                                    Update Data
+                                </>
+                            )}
+                        </button>
                     </div>
+                    
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                            <div className={`w-3 h-3 rounded-full ${apiStatus === 'healthy' ? 'bg-green-500' : 'bg-red-500'}`} />
+                            <span className="text-sm text-gray-600">
+                                API Status: {apiStatus === 'healthy' ? 'Healthy' : 'Unhealthy'}
+                            </span>
+                        </div>
+                        
+                        {updateMessage && (
+                            <div className={`text-sm px-3 py-1 rounded ${
+                                updateStatus === 'success' ? 'bg-green-100 text-green-800' :
+                                updateStatus === 'error' ? 'bg-red-100 text-red-800' :
+                                'bg-blue-100 text-blue-800'
+                            }`}>
+                                {updateMessage}
+                            </div>
+                        )}
+                    </div>
+                    
                     {backfillStatus === 'running' && (
                         <div className="mt-2 text-sm text-blue-600">
                             Backfilling recent history, please wait...
