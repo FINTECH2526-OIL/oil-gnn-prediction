@@ -273,14 +273,17 @@ async def get_prediction_history(
 
 @app.post("/update")
 async def update_predictions(force_refresh: bool = False):
+    """
+    Quick update: Start data pipeline asynchronously.
+    Returns immediately with status. Pipeline runs in background.
+    """
     try:
         import subprocess
         from datetime import date
-        import requests
         import os
         
         today = date.today()
-        print(f"[UPDATE] Today is {today}, checking for new data...")
+        print(f"[UPDATE] Today is {today}, starting async update...")
         
         # Get API key from environment
         alpha_key = os.environ.get("ALPHA_VANTAGE_API_KEY")
@@ -290,6 +293,7 @@ async def update_predictions(force_refresh: bool = False):
                 detail="ALPHA_VANTAGE_API_KEY not configured"
             )
         
+        # Quick check of Alpha Vantage (10 second timeout)
         response = requests.get(
             f"https://www.alphavantage.co/query?function=WTI&interval=daily&apikey={alpha_key}",
             timeout=10
@@ -303,6 +307,7 @@ async def update_predictions(force_refresh: bool = False):
                 "latest_alpha_vantage_date": None
             }
         
+        # Get latest valid date
         latest_av_date = None
         for item in av_data["data"]:
             try:
@@ -321,6 +326,7 @@ async def update_predictions(force_refresh: bool = False):
         
         print(f"[UPDATE] Latest Alpha Vantage date: {latest_av_date}")
         
+        # Check our latest processed data
         client = storage.Client()
         bucket = client.bucket(config.GCS_BUCKET_NAME)
         blobs = list(bucket.list_blobs(prefix='processed_data/final_aligned_data_'))
@@ -336,60 +342,40 @@ async def update_predictions(force_refresh: bool = False):
         needs_update = force_refresh or (latest_processed_date is None) or (latest_av_date > latest_processed_date)
         
         if not needs_update:
-            print("[UPDATE] No new data, running multi-step forecast only...")
-            result = subprocess.run(
+            # Just run quick forecast (non-blocking, ~5 seconds)
+            print("[UPDATE] Running quick forecast...")
+            subprocess.Popen(
                 ["python", "/workspace/multi_step_forecast.py"],
-                capture_output=True,
-                text=True,
-                timeout=120
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
             )
-            
-            if result.returncode == 0:
-                return {
-                    "status": "forecast_updated",
-                    "message": "Extended predictions using existing data",
-                    "latest_alpha_vantage_date": latest_av_date,
-                    "latest_processed_date": latest_processed_date
-                }
-            else:
-                raise HTTPException(status_code=500, detail=f"Forecast failed: {result.stderr}")
+            return {
+                "status": "forecast_started",
+                "message": "Forecast generation started. Refresh in 10 seconds.",
+                "latest_alpha_vantage_date": latest_av_date,
+                "latest_processed_date": latest_processed_date
+            }
         
-        print(f"[UPDATE] New data available! Running pipeline for {latest_av_date}...")
-        pipeline_result = subprocess.run(
+        # Start pipeline in background (non-blocking)
+        print(f"[UPDATE] Starting pipeline for {latest_av_date} in background...")
+        subprocess.Popen(
             ["python", "/workspace/run_data_pipeline.py", "--date", latest_av_date],
-            capture_output=True,
-            text=True,
-            timeout=600  # 10 minutes for full pipeline
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
         )
-        
-        if pipeline_result.returncode != 0:
-            raise HTTPException(
-                status_code=500,
-                detail=f"Pipeline failed: {pipeline_result.stderr}"
-            )
-        
-        print("[UPDATE] Running multi-step forecast...")
-        forecast_result = subprocess.run(
-            ["python", "/workspace/multi_step_forecast.py"],
-            capture_output=True,
-            text=True,
-            timeout=120
-        )
-        
-        if forecast_result.returncode != 0:
-            print(f"[UPDATE] WARNING: Forecast failed but pipeline succeeded: {forecast_result.stderr}")
         
         return {
-            "status": "updated",
-            "message": f"Successfully updated with data through {latest_av_date}",
+            "status": "update_started",
+            "message": f"Data pipeline started for {latest_av_date}. This will take 5-10 minutes. Refresh page later.",
             "latest_alpha_vantage_date": latest_av_date,
             "previous_processed_date": latest_processed_date,
-            "new_processed_date": latest_av_date
+            "estimated_completion": "5-10 minutes"
         }
     
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Update timeout")
     except Exception as e:
+        import traceback
+        print(f"[UPDATE] Error: {str(e)}")
+        print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Update error: {str(e)}")
 
 
