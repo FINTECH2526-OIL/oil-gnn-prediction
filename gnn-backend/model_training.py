@@ -7,7 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/1MiAtLCXzjUlKftb8hTZJ7dqL9Qim1PuY
 """
 
-!pip install -q google-cloud-storage pyarrow pycountry tqdm xgboost scikit-learn
+# !pip install -q google-cloud-storage pyarrow pycountry tqdm xgboost scikit-learn
 
 import importlib.util, sys, os, io, json, gzip
 from datetime import datetime, timedelta

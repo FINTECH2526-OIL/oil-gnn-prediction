@@ -58,3 +58,13 @@ variable "use_image" {
   type = bool
   default = false
 }
+
+variable "timeout" {
+  type = number
+  default = 120
+}
+
+variable "limits" {
+  type = map(string)
+  default = null
+}

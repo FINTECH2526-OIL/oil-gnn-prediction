@@ -27,6 +27,8 @@ module "cloud_run" {
   image                 = var.use_image ? "${var.project_region}-docker.pkg.dev/${var.project_id}/${var.docker_repo_name}/${var.service_name}:latest" : "gcr.io/cloudrun/hello"
   service_account_email = data.google_service_account.service_account.email
   env_vars = var.service_env_vars
+  timeout_seconds = var.timeout
+  limits = var.limits
 }
 
 

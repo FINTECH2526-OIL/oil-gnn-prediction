@@ -370,6 +370,5 @@ class DailyDataPipeline:
         # Upload to GCS
         blob = self.bucket.blob(output_path)
         blob.upload_from_string(compressed_data, content_type='application/gzip')
-    print(f"Successfully saved to gs://{self.bucket.name}/{output_path}")
-
-    return output_path
+        print(f"Successfully saved to gs://{self.bucket.name}/{output_path}")
+        return output_path
