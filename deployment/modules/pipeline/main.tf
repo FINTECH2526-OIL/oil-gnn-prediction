@@ -5,6 +5,7 @@ resource "google_pubsub_topic" "daily_topic" {
   name = "daily-trigger-topic"
 }
 
+
 ########################
 # Cloud Storage Bucket
 # (for function source)
@@ -54,18 +55,21 @@ resource "google_cloudfunctions2_function" "function" {
   }
 
   service_config {
+    available_cpu = 2
     service_account_email = data.google_service_account.service_account.email
     max_instance_count = 1
-    available_memory  = "2G"
-    timeout_seconds   = 540
-    environment_variables = var.env_vars
+    available_memory  = "8G"
+    timeout_seconds   = 1080
+    
+    # environment_variables = var.env_vars
   }
 
   event_trigger {
     trigger_region = var.region
     event_type     = "google.cloud.pubsub.topic.v1.messagePublished"
     pubsub_topic   = google_pubsub_topic.daily_topic.id
-    retry_policy   = "RETRY_POLICY_RETRY"
+    retry_policy = "RETRY_POLICY_DO_NOT_RETRY"
+    service_account_email = data.google_service_account.service_account.email
   }
 }
 
@@ -75,11 +79,24 @@ resource "google_cloudfunctions2_function" "function" {
 resource "google_cloud_scheduler_job" "daily_job" {
   name      = "daily-pubsub-job"
   schedule  = "15 7 * * TUE-SAT" # daily at midnight UTC
-  time_zone = "UTC"
+  time_zone = "Asia/Singapore"
+  
 
   pubsub_target {
     topic_name = google_pubsub_topic.daily_topic.id
     data       = base64encode("{\"trigger\":\"daily\"}")
   }
+  # http_target {
+  #   http_method = "POST"
+  #   uri         = "https://pubsub.googleapis.com/v1/projects/${var.project_id}/topics/${google_pubsub_topic.daily_topic.id}:publish"
+  #   body        = base64encode("{\"messages\": [{\"data\": \"\", \"attributes\": {}}]}")
+  #   headers = {
+  #     "Content-Type" = "application/json"
+  #   }
+  #   oidc_token {
+  #     service_account_email = data.google_service_account.service_account.email
+  #     audience = google_cloudfunctions2_function.function.service_config[0].uri
+  #   }
+  # }
 
 }

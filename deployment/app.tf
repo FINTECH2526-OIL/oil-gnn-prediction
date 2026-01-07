@@ -24,7 +24,7 @@ module "model_service" {
   docker_repo_name   = var.docker_repo_name
   limits = {
     cpu    = 2
-    memory = "4Gi"
+    memory = "8Gi"
   }
   timeout = 300
   service_env_vars = [{
