@@ -8,3 +8,4 @@ joblib
 xgboost
 scikit-learn
 pyarrow
+tqdm

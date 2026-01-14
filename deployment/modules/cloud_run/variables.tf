@@ -68,3 +68,9 @@ variable "limits" {
   type = map(string)
   default = null
 }
+
+variable "template_annotations" {
+  type = map(string)
+  default = {}
+  
+}

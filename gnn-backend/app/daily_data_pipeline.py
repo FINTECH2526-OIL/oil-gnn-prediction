@@ -1,7 +1,11 @@
 import os
+import concurrent.futures
+import threading
 import pandas as pd
 import numpy as np
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 import zipfile
 import io
 from datetime import datetime, timedelta, date
@@ -11,7 +15,10 @@ import gzip
 import json
 from typing import List, Dict, Optional
 from google.cloud import storage
+import pyarrow.csv
+import pyarrow._csv
 import pycountry
+from tqdm import tqdm
 
 from .config import config
 
@@ -46,22 +53,51 @@ class DailyDataPipeline:
         self.client = storage.Client()
         self.bucket = self.client.bucket(config.GCS_BUCKET_NAME)
         self.alpha_vantage_key = os.environ.get("ALPHA_VANTAGE_API_KEY")
-        
-    def fetch_gdelt_for_date(self, target_date: datetime) -> pd.DataFrame:
+        self._last_request_time = 0
+
+    def get_gdelt_file_if_exists(self, target_date: datetime) -> Optional[pd.DataFrame]:
+        """
+        Check if GDELT file exists in GCS for the given date and load it.
+        """
+        date_str = target_date.strftime('%Y%m%d')
+        cache_path = f"{config.GCS_PROCESSED_PATH}daily_cache/{date_str}_gdelt.json.gz"
+        blob = self.bucket.blob(cache_path)
+        if not blob:
+            return None
+        else:
+            try:
+                with blob.open("rb") as f:
+                    compressed = f.read()
+                    json_data = gzip.decompress(compressed).decode('utf-8')
+                    gdelt_data = json.loads(json_data)
+                    return gdelt_data
+            except Exception as e:
+                print(f"GDELT File for {target_date} not found", flush=True)
+                return None
+
+    def fetch_gdelt_for_date(self, target_date: datetime, progress_bar=False, session: requests.Session=None) -> pd.DataFrame:
         date_str = target_date.strftime('%Y%m%d')
         
         base_url = "http://data.gdeltproject.org/gdeltv2"
         
         all_records = []
-        
-        for hour in range(24):
-            for minute in ['00', '15', '30', '45']:
-                timestamp = f"{date_str}{hour:02d}{minute}00"
-                url = f"{base_url}/{timestamp}.gkg.csv.zip"
-                
-                df = self._fetch_single_gdelt_file(url)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            futures = []
+            threading_lock = threading.Lock()
+            self._last_request_time = 0
+
+            for hour in range(24):
+                for minute in ['00', '15', '30', '45']:
+                    timestamp = f"{date_str}{hour:02d}{minute}00"
+                    url = f"{base_url}/{timestamp}.gkg.csv.zip"
+                    futures.append(executor.submit(self._fetch_single_gdelt_file, url, session=session, threading_lock=threading_lock))
+
+            for future in tqdm(concurrent.futures.as_completed(futures), disable=not progress_bar, total=len(futures), desc="Fetching GDELT files"):
+                df = future.result()
                 if df is not None and not df.empty:
                     all_records.append(df)
+
         
         if all_records:
             combined_df = pd.concat(all_records, ignore_index=True)
@@ -69,7 +105,7 @@ class DailyDataPipeline:
         
         return pd.DataFrame()
     
-    def _fetch_single_gdelt_file(self, url: str) -> Optional[pd.DataFrame]:
+    def _fetch_single_gdelt_file(self, url: str, session: requests.session=None, threading_lock: threading.Lock =None) -> Optional[pd.DataFrame]:
         columns = [
             'GKGRECORDID', 'V21DATE', 'V2SOURCECOLLECTIONIDENTIFIER', 'V2SOURCECOMMONNAME',
             'V2DOCUMENTIDENTIFIER', 'V1COUNTS', 'V21COUNTS', 'V1THEMES', 'V21THEMES',
@@ -78,22 +114,54 @@ class DailyDataPipeline:
             'V21SHARINGIMAGE', 'V21RELATEDIMAGES', 'V21SOCIALIMAGEEMBEDS', 'V21SOCIALVIDEOEMBEDS',
             'V21QUOTATIONS', 'V21ALLNAMES', 'V21AMOUNTS', 'V21TRANSLATIONINFO', 'V21EXTRAS'
         ]
-        
+
+        # Rate Limiting Mechanism with threading.Lock
+        if threading_lock is not None:
+            with threading_lock:
+                now = time.time()
+                elapsed = now - self._last_request_time
+                if elapsed < 5:  # 10 requests per second
+                    time.sleep(5 - elapsed)
+                self._last_request_time = time.time()
+        else:
+            print("[WARNING] No threading lock provided for rate limiting. Can cause errors in retrieving GDELT files.", flush=True)
+
         try:
             response = requests.get(url, timeout=30)
             if response.status_code == 200:
                 with zipfile.ZipFile(io.BytesIO(response.content)) as z:
                     csv_filename = z.namelist()[0]
                     with z.open(csv_filename) as csvfile:
-                        df = pd.read_csv(csvfile, sep='\t', names=columns,
-                                       dtype=str, low_memory=False, encoding='utf-8',
-                                       on_bad_lines='skip', engine="pyarrow")
+                        # df = pd.read_csv(csvfile, sep='\t', names=columns,
+                        #                dtype=str, encoding='utf-8',
+                        #                on_bad_lines='skip', keep_default_na=True, 
+                                    
+                        #                engine="pyarrow")
+                        csv = csvfile.read()
+                        parse_options: pyarrow._csv.ParseOptions = pyarrow.csv.ParseOptions(delimiter='\t')
+                        convert_options: pyarrow._csv.ConvertOptions = pyarrow.csv.ConvertOptions(strings_can_be_null=True)
+                        table = pyarrow.csv.read_csv(io.BytesIO(csv),
+                                                      read_options=pyarrow.csv.ReadOptions(
+                                                          column_names=columns[:min(
+                                                              len(columns), pyarrow.csv.read_csv(
+                                                                  io.BytesIO(csv),
+                                                                  parse_options=parse_options,
+                                                                  convert_options=convert_options
+                                                            ).num_columns
+                                                        )]
+                                                        , skip_rows=0
+                                                    ),
+                                                    parse_options=parse_options,
+                                                    convert_options=convert_options)
+                        df = table.to_pandas()
                         return df
             elif response.status_code == 404:
+                print(f"GDELT file not found: {url}", flush=True)
                 return None
         except Exception as e:
+            print(f"Error fetching GDELT file: {url}, error: {e}", flush=True)
             return None
-        
+        print("Unexpected error fetching GDELT file:", url, flush=True)
         return None
     
     def fetch_oil_prices(self, days_back: int = 90) -> pd.DataFrame:
@@ -109,7 +177,11 @@ class DailyDataPipeline:
         }
         
         response = requests.get(url, params=params, timeout=30)
-        data = response.json()
+        try:
+            data = response.json()
+        except:
+            print(response.text)
+            raise ValueError(f"Alpha Vantage API error: Unable to parse JSON response")
         
         if "data" not in data:
             raise ValueError(f"Alpha Vantage API error: {data}")
@@ -452,7 +524,21 @@ class DailyDataPipeline:
         except Exception as e:
             print(f"Failed to save GDELT data to cache: {e}", flush=True)
 
-    def run_daily_update(self, target_date: Optional[datetime] = None, force_refresh: bool = False) -> str:
+    def _save_by_daily_cached_gdelt_data_(self, gdelt_data: Dict, date_str: str):
+        """Save GDELT data to GCS cache."""
+        try:
+            cache_path = f"{config.GCS_PROCESSED_PATH}daily_cache/{date_str}_gdelt.json.gz"
+            blob = self.bucket.blob(cache_path)
+
+            json_data = json.dumps(gdelt_data, default=str).encode('utf-8')
+            compressed = gzip.compress(json_data)
+            
+            blob.upload_from_string(compressed, content_type='application/gzip')
+            print(f"✓ Saved GDELT data to cache: {cache_path}", flush=True)
+        except Exception as e:
+            print(f"Failed to save GDELT data to cache: {e}", flush=True)
+
+    def run_daily_update(self, target_date: Optional[datetime] = None, force_refresh: bool = False, progress_bar=False) -> str:
         target_dt = _resolve_target_datetime(target_date)
         target_dt_naive = target_dt.replace(tzinfo=None)
 
@@ -493,17 +579,36 @@ class DailyDataPipeline:
             # Current Issue: Daily, GDELT data that are processed before are re-fetched and re-processed every time the pipeline runs for a new day
             # Rewriting Saving loop to store cached gdelt data separately to prevent unnecessary re-fetching and reducing processing
             # Tldr: expanding caching ability from daily to monthly (x30 faster)
+            session = requests.Session()
+
+            # Define a retry strategy
+            retry_strategy = Retry(
+                total=100,
+                status_forcelist=[429, 500, 502, 503, 504], # Status codes to retry on
+                allowed_methods=["HEAD", "GET", "OPTIONS"],
+                backoff_factor=1
+            )
+            adapter = HTTPAdapter(
+                pool_connections=10, 
+                pool_maxsize=20, 
+                max_retries=retry_strategy
+            )
+            session.mount("https://", adapter=adapter)
+
             for days_ago in range(30, -1, -1):
                 current_date = actual_end_date - timedelta(days=days_ago)
                 print(f"Fetching GDELT data for {current_date.date()}...", flush=True)
-                
-                gdelt_df = self.fetch_gdelt_for_date(current_date)
-                if not gdelt_df.empty:
-                    processed = self.process_gdelt_data(gdelt_df, current_date)
-                    if processed:
-                        gdelt_data_list.append(processed)
-                
-                time.sleep(1)
+                processed = None
+                if (days_ago != 0):
+                    processed = self.get_gdelt_file_if_exists(current_date)
+                if processed is None: 
+                    gdelt_df = self.fetch_gdelt_for_date(current_date, progress_bar=progress_bar, session=session)
+                    if not gdelt_df.empty:
+                        processed = self.process_gdelt_data(gdelt_df, current_date)
+                        self._save_by_daily_cached_gdelt_data_(processed, current_date.date().strftime('%Y%m%d'))
+                if processed:
+                    gdelt_data_list.append(processed) 
+                #time.sleep(1)
             
             print(f"Processed GDELT data for {len(gdelt_data_list)} days")
             self._save_cached_gdelt_data(gdelt_data_list, cache_date_str)

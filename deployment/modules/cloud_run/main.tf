@@ -29,6 +29,7 @@ module "cloud_run" {
   env_vars = var.service_env_vars
   timeout_seconds = var.timeout
   limits = var.limits
+  template_annotations = var.template_annotations
 }
 
 

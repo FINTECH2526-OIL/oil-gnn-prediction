@@ -2,7 +2,7 @@ import os
 from pathlib import Path
 
 class Config:
-    GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "gdelt_raw_3_years")
+    GCS_BUCKET_NAME = os.environ.get("GCS_BUCKET_NAME", "2_gdelt_raw_3_years")
     GCS_PROCESSED_PATH = os.environ.get("GCS_PROCESSED_PATH", "processed_data/")
     GCS_MODELS_PATH = os.environ.get("GCS_MODELS_PATH", "trained_models/")
     

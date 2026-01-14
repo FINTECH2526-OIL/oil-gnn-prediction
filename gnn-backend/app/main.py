@@ -95,7 +95,8 @@ async def health_check():
     try:
         model_inf = get_model_inference()
         models_loaded = model_inf.models_loaded
-    except:
+    except Exception as e:
+        print(f"Health check model load error: {e}")
         models_loaded = False
     
     return {
@@ -360,8 +361,8 @@ async def update_predictions(force_refresh: bool = False):
         print(f"[UPDATE] Starting pipeline for {latest_av_date} in background...")
         subprocess.Popen(
             ["python", "/workspace/run_data_pipeline.py", "--date", latest_av_date],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL
+            # stdout=subprocess.DEVNULL,
+            # stderr=subprocess.DEVNULL
         )
         
         return {

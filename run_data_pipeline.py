@@ -16,7 +16,8 @@ def main():
     parser.add_argument('--date', type=str, help='Target date (YYYY-MM-DD), defaults to yesterday')
     parser.add_argument('--days-back', type=int, default=30, help='Number of historical days to fetch')
     parser.add_argument('--force-refresh', action='store_true', help='Ignore cached inputs and refetch from sources')
-    
+    parser.add_argument('--progress-bar', action='store_true', help='Show progress bar during data fetching')
+
     args = parser.parse_args()
     
     if args.date:
@@ -31,7 +32,7 @@ def main():
     pipeline = DailyDataPipeline()
     
     try:
-        output_path = pipeline.run_daily_update(target_date, force_refresh=args.force_refresh)
+        output_path = pipeline.run_daily_update(target_date, force_refresh=args.force_refresh, progress_bar=args.progress_bar)
         inference_result = run_daily_inference()
         
         print("=" * 60)
