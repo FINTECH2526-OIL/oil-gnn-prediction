@@ -92,16 +92,19 @@ class DailyDataPipeline:
                     timestamp = f"{date_str}{hour:02d}{minute}00"
                     url = f"{base_url}/{timestamp}.gkg.csv.zip"
                     futures.append(executor.submit(self._fetch_single_gdelt_file, url, session=session, threading_lock=threading_lock))
+            cache_data = True 
 
             for future in tqdm(concurrent.futures.as_completed(futures), disable=not progress_bar, total=len(futures), desc="Fetching GDELT files"):
                 df = future.result()
                 if df is not None and not df.empty:
                     all_records.append(df)
+                else:
+                    cache_data = False # To mark GDELT data from this date to not be cached
 
         
         if all_records:
             combined_df = pd.concat(all_records, ignore_index=True)
-            return combined_df
+            return combined_df, cache_data
         
         return pd.DataFrame()
     
@@ -140,19 +143,26 @@ class DailyDataPipeline:
                         csv = csvfile.read()
                         parse_options: pyarrow._csv.ParseOptions = pyarrow.csv.ParseOptions(delimiter='\t')
                         convert_options: pyarrow._csv.ConvertOptions = pyarrow.csv.ConvertOptions(strings_can_be_null=True)
+                        maximum_no_of_cols = min(
+                            len(columns), 
+                            pyarrow.csv.read_csv(
+                                io.BytesIO(csv),
+                                parse_options=parse_options,
+                                convert_options=convert_options
+                            ).num_columns
+                        )
+                        available_columns = columns[:maximum_no_of_cols]
+                        missing_columns = columns[maximum_no_of_cols:]
                         table = pyarrow.csv.read_csv(io.BytesIO(csv),
                                                       read_options=pyarrow.csv.ReadOptions(
-                                                          column_names=columns[:min(
-                                                              len(columns), pyarrow.csv.read_csv(
-                                                                  io.BytesIO(csv),
-                                                                  parse_options=parse_options,
-                                                                  convert_options=convert_options
-                                                            ).num_columns
-                                                        )]
-                                                        , skip_rows=0
+                                                        column_names=available_columns,
+                                                        skip_rows=0
                                                     ),
                                                     parse_options=parse_options,
-                                                    convert_options=convert_options)
+                                                    convert_options=convert_options
+                        )
+                        for col in missing_columns:
+                            table = table.append_column(col, pyarrow.array([None] * table.num_rows))
                         df = table.to_pandas()
                         return df
             elif response.status_code == 404:
@@ -602,10 +612,11 @@ class DailyDataPipeline:
                 if (days_ago != 0):
                     processed = self.get_gdelt_file_if_exists(current_date)
                 if processed is None: 
-                    gdelt_df = self.fetch_gdelt_for_date(current_date, progress_bar=progress_bar, session=session)
+                    gdelt_df, cache_data = self.fetch_gdelt_for_date(current_date, progress_bar=progress_bar, session=session)
                     if not gdelt_df.empty:
                         processed = self.process_gdelt_data(gdelt_df, current_date)
-                        self._save_by_daily_cached_gdelt_data_(processed, current_date.date().strftime('%Y%m%d'))
+                        if cache_data:
+                            self._save_by_daily_cached_gdelt_data_(processed, current_date.date().strftime('%Y%m%d'))
                 if processed:
                     gdelt_data_list.append(processed) 
                 #time.sleep(1)

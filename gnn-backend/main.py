@@ -1,7 +1,7 @@
 import functions_framework
 from datetime import datetime
 
-from daily_data_pipeline_standalone import DailyDataPipeline
+from app.daily_data_pipeline import DailyDataPipeline
 from prediction_pipeline import run_daily_inference
 
 @functions_framework.http
