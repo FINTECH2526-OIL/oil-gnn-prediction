@@ -6,7 +6,7 @@ class Config:
     GCS_PROCESSED_PATH = os.environ.get("GCS_PROCESSED_PATH", "processed_data/")
     GCS_MODELS_PATH = os.environ.get("GCS_MODELS_PATH", "trained_models/")
     
-    MODEL_RUN_ID = os.environ.get("MODEL_RUN_ID", "run_20251101_090727_18dd2c")
+    MODEL_RUN_ID = os.environ.get("MODEL_RUN_ID", "run_20260125_141030_01fe84")
     
     LOCAL_CACHE_DIR = Path("/tmp/oil_model_cache")
     LOCAL_CACHE_DIR.mkdir(exist_ok=True, parents=True)

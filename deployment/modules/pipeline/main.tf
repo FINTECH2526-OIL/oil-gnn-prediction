@@ -61,7 +61,7 @@ resource "google_cloudfunctions2_function" "function" {
     available_memory  = "8G"
     timeout_seconds   = 1080
     
-    # environment_variables = var.env_vars
+    environment_variables = var.env_vars
   }
 
   event_trigger {

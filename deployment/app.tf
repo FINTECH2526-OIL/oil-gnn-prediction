@@ -96,6 +96,7 @@ module "function_pipeline" {
     GCS_BUCKET_NAME       = var.GCS_BUCKET_NAME
     GCS_PROCESSED_PATH    = var.GCS_PROCESSED_PATH
     GCS_MODELS_PATH       = var.GCS_MODELS_PATH
+    MODEL_RUN_ID = var.MODEL_RUN_ID
   }
   service_account_id = var.service_account_id
 }
