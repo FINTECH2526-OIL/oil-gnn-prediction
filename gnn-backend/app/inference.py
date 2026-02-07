@@ -69,12 +69,14 @@ class ModelInference:
         for filename in required_files:
             blob_name = artifacts_prefix + filename
             local_path = local_model_dir / filename
-            
-            if not local_path.exists():
-                blob = self.bucket.blob(blob_name)
-                if blob.exists():
-                    with open(local_path, "wb") as f:
-                        f.write(blob.download_as_bytes())
+            blob = self.bucket.blob(blob_name)
+            if blob.exists():
+                with open(local_path, "wb") as f:
+                    f.write(blob.download_as_bytes())
+        try:
+            print("Downloaded artifacts:", sorted(p.name for p in local_model_dir.iterdir()))
+        except Exception:
+            pass
         
         return local_model_dir
     
@@ -102,6 +104,13 @@ class ModelInference:
             with open(features_path, 'r') as f:
                 features = json.load(f)
                 metadata_features = features.get("feature_cols_with_graph")
+
+        if self.scaler_graph is None:
+            print("WARNING: scaler_graph not loaded or missing")
+        else:
+            print(f"scaler_graph n_features_in_: {getattr(self.scaler_graph, 'n_features_in_', None)}")
+        if metadata_features is not None:
+            print(f"Loaded metadata features count: {len(metadata_features)}")
         
         scaler_features = None
         if hasattr(self.scaler_X, 'feature_names_in_'):
@@ -137,6 +146,16 @@ class ModelInference:
                 self.feature_columns = self._default_feature_columns()
             else:
                 self.feature_columns = metadata_features
+        elif expected_graph:
+            base = self._default_feature_columns()
+            graph_cols = [f"graph_feat_{i}" for i in range(max(0, expected_graph - len(base)))]
+            combined = base + graph_cols
+            self.feature_columns = combined[:expected_graph]
+            if len(self.feature_columns) != expected_graph:
+                print(
+                    f"WARNING: Constructed feature list length {len(self.feature_columns)} does not match scaler_graph expected {expected_graph}.",
+                    file=sys.stderr,
+                )
         else:
             self.feature_columns = self._default_feature_columns()
             print(
