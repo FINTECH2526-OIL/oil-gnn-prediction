@@ -105,11 +105,11 @@ class SimpleGraphFeatureExtractor:
             adj_matrix, country_to_idx = self.create_adjacency_matrix(date_data)
 
             features_matrix = []
+            col_order = list(feature_cols)
             for country in date_data['country_iso3'].unique():
                 country_data_sub = date_data[date_data['country_iso3'] == country]
-                selected_cols = list(set(feature_cols.array) & set(country_data_sub.columns))
                 if len(country_data_sub) > 0:
-                    features = country_data_sub[selected_cols].iloc[0].values
+                    features = country_data_sub.reindex(columns=col_order).iloc[0].fillna(0).values
                     features_matrix.append(features)
 
             if len(features_matrix) > 0:
