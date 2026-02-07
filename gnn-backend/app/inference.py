@@ -45,6 +45,10 @@ class ModelInference:
             'spread_wti_brent', 'correlation_20d', 'volatility_ratio'
         ]
 
+    @staticmethod
+    def get_default_feature_columns() -> List[str]:
+        return ModelInference._default_feature_columns()
+
     def download_model_artifacts(self):
         artifacts_prefix = f"{config.GCS_MODELS_PATH}{config.MODEL_RUN_ID}/artifacts/"
         
@@ -72,7 +76,7 @@ class ModelInference:
         
         return local_model_dir
     
-    def load_models(self):
+    def load_models(self, depend_on_metadata=False):
         if self.models_loaded:
             return
         
@@ -86,10 +90,13 @@ class ModelInference:
         
         metadata_features = None
         metadata_path = model_dir / "metadata.json"
+        print(metadata_path)
         if metadata_path.exists():
+            print("self Scaler X", self.scaler_X.n_features_in_)
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
-                metadata_features = metadata.get('feature_columns')
+                metadata_features = metadata.get('features', {}).get("feature_cols_with_graph")
+                print(metadata_features)
                 if metadata_features:
                     print(
                         f"Loaded {len(metadata_features)} features from metadata.json",
@@ -104,19 +111,21 @@ class ModelInference:
                     f"Loaded {len(scaler_features)} feature names from scaler.feature_names_in_",
                     file=sys.stderr,
                 )
+        print("Scaler Features:", vars(self.scaler_X))
+        print("Metadata Features:", metadata_features)
         
-        if scaler_features:
+        if scaler_features and not(depend_on_metadata):
             self.feature_columns = scaler_features
         elif metadata_features:
             expected = getattr(self.scaler_X, 'n_features_in_', None)
-            if expected and len(metadata_features) >= expected:
+            if not(depend_on_metadata) and expected and len(metadata_features) >= expected:
                 self.feature_columns = metadata_features[:expected]
                 if len(metadata_features) != expected:
                     print(
                         f"Trimmed metadata feature list from {len(metadata_features)} to {expected} to match scaler",
                         file=sys.stderr,
                     )
-            elif expected and len(metadata_features) < expected:
+            elif not(depend_on_metadata) and expected and len(metadata_features) < expected:
                 print(
                     f"WARNING: Metadata provides {len(metadata_features)} features but scaler expects {expected}. "
                     "Falling back to default feature list.",
@@ -137,9 +146,10 @@ class ModelInference:
     def predict_delta(self, X):
         self.load_models()
         
-        X_scaled = self.scaler_X.transform(X)
+        X_scaled = self.scaler_X.transform(X[:, :self.scaler_X.n_features_in_])
         
         pred_base = self.model_base.predict(X_scaled)
+        X_scaled = np.concatenate((X_scaled, X[:, self.scaler_X.n_features_in_:]), axis=1)
         enhanced_expected = getattr(self.model_enhanced, 'n_features_in_', X_scaled.shape[1])
         if enhanced_expected == X_scaled.shape[1]:
             pred_enhanced = self.model_enhanced.predict(X_scaled)
@@ -189,7 +199,7 @@ class ModelInference:
             if hasattr(self.country_models, 'country_models') and country_iso3 in self.country_models.country_models:
                 scaler = self.country_models.country_scalers[country_iso3]
                 model = self.country_models.country_models[country_iso3]
-                X_scaled = scaler.transform(X)
+                X_scaled = scaler.transform(X[:,:scaler.n_features_in_])
                 pred = model.predict(X_scaled)[0]
             else:
                 pred = self.predict_delta(X)[0]

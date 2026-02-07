@@ -21,6 +21,8 @@ import pycountry
 from tqdm import tqdm
 
 from .config import config
+from .SimpleGraphFeatureExtractor import SimpleGraphFeatureExtractor
+from .inference import ModelInference
 
 SGT = ZoneInfo("Asia/Singapore")
 
@@ -106,7 +108,7 @@ class DailyDataPipeline:
             combined_df = pd.concat(all_records, ignore_index=True)
             return combined_df, cache_data
         
-        return pd.DataFrame()
+        return pd.DataFrame(), False
     
     def _fetch_single_gdelt_file(self, url: str, session: requests.session=None, threading_lock: threading.Lock =None) -> Optional[pd.DataFrame]:
         columns = [
@@ -251,6 +253,7 @@ class DailyDataPipeline:
             print(f"Alpha Vantage Brent response missing data field: {data_brent}", flush=True)
         
         return df
+
     
     def process_gdelt_data(self, df: pd.DataFrame, target_date: datetime) -> Dict:
         if df.empty:
@@ -627,6 +630,10 @@ class DailyDataPipeline:
             print(f"Using cached GDELT data: {len(gdelt_data_list)} days")
         
         final_df = self.align_and_engineer_features(gdelt_data_list, oil_data)
+
+        graph_extractor = SimpleGraphFeatureExtractor()
+        final_df, _ = graph_extractor.extract_graph_features(final_df, pd.Index(ModelInference.get_default_feature_columns()))
+
         
         if final_df.empty:
             raise ValueError("No data generated from pipeline")
