@@ -12,13 +12,27 @@
     - Artifact Registry Administrator 
     - Create Service Account
     - Service Account User
+    - Cloud Functions Admin
+    - Pub/Sub Admin
+    - Cloud Scheduler Admin
+    - Storage Admin
+    - Eventarc Admin
+    - Artifact Registry Administrator
+    - Cloud Build Service Account 
+    - Logging Admin
 2. Login into GCP (`gcloud auth login`)
 3. Run the below command to enable the required APIs (If any are missed out, please raise an issue)
 ```bash
-gcloud services enable cloudresourcemanager.googleapis.com
-gcloud services enable artifactregistry.googleapis.com
-gcloud services enable iam
-gcloud services enable redis.googleapis.com
+gcloud services enable \
+cloudresourcemanager.googleapis.com \
+artifactregistry.googleapis.com \
+iam \
+run.googleapis.com \
+cloudfunctions.googleapis.com \
+cloudbuild.googleapis.com \
+eventarc.googleapis.com \
+pubsub.googleapis.com \
+cloudscheduler.googleapis.com 
 ```
 4. From the service account, create a key in JSON
 5. Run the following script to obtain a minifed json output
