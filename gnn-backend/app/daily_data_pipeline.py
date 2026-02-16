@@ -176,7 +176,7 @@ class DailyDataPipeline:
         print("Unexpected error fetching GDELT file:", url, flush=True)
         return None
     
-    def fetch_oil_prices(self, days_back: int = 90) -> pd.DataFrame:
+    def fetch_oil_prices(self, oil_df: pd.DataFrame, cache_date_str, days_back: int = 90) -> pd.DataFrame:
         if not self.alpha_vantage_key:
             raise ValueError("ALPHA_VANTAGE_API_KEY environment variable not set")
         
@@ -187,6 +187,7 @@ class DailyDataPipeline:
             "interval": "daily",
             "apikey": self.alpha_vantage_key
         }
+
         
         response = requests.get(url, params=params, timeout=30)
         try:
@@ -217,6 +218,14 @@ class DailyDataPipeline:
         
         df = pd.DataFrame(records)
         df = df.sort_values("date").reset_index(drop=True)
+
+        # Check if latest WTI Date is in cache_data
+        if oil_df is not None:
+            try:
+                if df["date"].max() <= oil_df["date"].max():
+                    return oil_df
+            except KeyError as e:
+                print("Unexpected error in comparing date of last oil price retrieval", e)  
         
         print("Fetching Brent prices from Alpha Vantage...", flush=True)
         url_brent = f"https://www.alphavantage.co/query"
@@ -249,6 +258,18 @@ class DailyDataPipeline:
             df_brent = pd.DataFrame(brent_records)
             df = df.merge(df_brent, on="date", how="left")
             print(f"Brent records kept: {len(brent_records)}, skipped: {skipped_brent}", flush=True)
+            # Adding in new Records into oil_df
+            if oil_df is not None:
+                not_in_cache = []
+                for row in df.iterrows:
+                    if row["date"] not in oil_df['date'].values:
+                        print(row["date"] + "is not in cached data, adding now.")
+                        not_in_cache.append(row)
+                df = pd.concat([oil_df, not_in_cache], ignore_index=True)
+                if (len(not_in_cache) != 0):
+                    self._save_cached_oil_data(df, cache_date_str)
+            else:
+                self._save_cached_oil_data(df, cache_date_str)
         else:
             print(f"Alpha Vantage Brent response missing data field: {data_brent}", flush=True)
         
@@ -570,13 +591,9 @@ class DailyDataPipeline:
             print("→ Force refresh enabled, fetching fresh data...", flush=True)
         
         # Fetch oil data if not cached
-        if oil_data is None:
-            print("→ Fetching fresh oil price data...", flush=True)
-            oil_data = self.fetch_oil_prices(days_back=90)
-            print(f"Fetched oil prices: {len(oil_data)} days")
-            self._save_cached_oil_data(oil_data, cache_date_str)
-        else:
-            print(f"Using cached oil prices: {len(oil_data)} days")
+        print("→ Fetching fresh oil price data...", flush=True)
+        oil_data = self.fetch_oil_prices(oil_data, cache_date_str, days_back=90)
+        print(f"Fetched oil prices: {len(oil_data)} days")
         
         # Fetch GDELT data if not cached
         if gdelt_data_list is None:
