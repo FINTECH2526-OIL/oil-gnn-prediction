@@ -11,7 +11,9 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 import type { ChartOptions } from 'chart.js';
-import { getPredictionHistory, checkHealth, triggerBackfill, updatePredictions } from '../services/api';
+import { getPredictionHistory, checkHealth, 
+    // triggerBackfill, updatePredictions 
+} from '../services/api';
 import type { PredictionRecord } from '../types/api';
 
 ChartJS.register(
@@ -34,54 +36,54 @@ export default function Dashboard() {
     const [error, setError] = useState<string | null>(null);
     const [dateRange, setDateRange] = useState<DateRange>(30);
     const [apiStatus, setApiStatus] = useState<'healthy' | 'unhealthy' | 'checking'>('checking');
-    const [backfillStatus, setBackfillStatus] = useState<'idle' | 'running' | 'failed' | 'success'>('idle');
-    const [updateStatus, setUpdateStatus] = useState<'idle' | 'checking' | 'updating' | 'success' | 'error'>('idle');
-    const [updateMessage, setUpdateMessage] = useState<string>('');
+    const [backfillStatus, /*setBackfillStatus*/] = useState<'idle' | 'running' | 'failed' | 'success'>('idle');
+    const [updateStatus, /*setUpdateStatus*/] = useState<'idle' | 'checking' | 'updating' | 'success' | 'error'>('idle');
+    const [updateMessage, /*setUpdateMessage*/] = useState<string>('');
 
-    const handleUpdateData = async () => {
-        try {
-            setUpdateStatus('checking');
-            setUpdateMessage('Checking for new data...');
+    // const handleUpdateData = async () => {
+    //     try {
+    //         setUpdateStatus('checking');
+    //         setUpdateMessage('Checking for new data...');
             
-            const result = await updatePredictions(false);
+    //         const result = await updatePredictions(false);
             
-            setUpdateStatus('updating');
-            setUpdateMessage(result.message || 'Updating predictions...');
+    //         setUpdateStatus('updating');
+    //         setUpdateMessage(result.message || 'Updating predictions...');
             
-            // Wait a bit for processing
-            await new Promise(resolve => setTimeout(resolve, 2000));
+    //         // Wait a bit for processing
+    //         await new Promise(resolve => setTimeout(resolve, 2000));
             
-            // Refresh history
-            const today = new Date();
-            const startDate = new Date(today);
-            startDate.setDate(startDate.getDate() - 30);
-            const startDateIso = startDate.toISOString().split('T')[0];
+    //         // Refresh history
+    //         const today = new Date();
+    //         const startDate = new Date(today);
+    //         startDate.setDate(startDate.getDate() - 30);
+    //         const startDateIso = startDate.toISOString().split('T')[0];
             
-            const newData = await getPredictionHistory({
-                days: DEFAULT_HISTORY_WINDOW,
-                startDate: startDateIso,
-            });
+    //         const newData = await getPredictionHistory({
+    //             days: DEFAULT_HISTORY_WINDOW,
+    //             startDate: startDateIso,
+    //         });
             
-            setHistory(newData);
-            setUpdateStatus('success');
-            setUpdateMessage('Successfully updated! Showing latest predictions.');
+    //         setHistory(newData);
+    //         setUpdateStatus('success');
+    //         setUpdateMessage('Successfully updated! Showing latest predictions.');
             
-            // Clear success message after 5 seconds
-            setTimeout(() => {
-                setUpdateStatus('idle');
-                setUpdateMessage('');
-            }, 5000);
-        } catch (err) {
-            setUpdateStatus('error');
-            setUpdateMessage(err instanceof Error ? err.message : 'Update failed');
+    //         // Clear success message after 5 seconds
+    //         setTimeout(() => {
+    //             setUpdateStatus('idle');
+    //             setUpdateMessage('');
+    //         }, 5000);
+    //     } catch (err) {
+    //         setUpdateStatus('error');
+    //         setUpdateMessage(err instanceof Error ? err.message : 'Update failed');
             
-            // Clear error after 5 seconds
-            setTimeout(() => {
-                setUpdateStatus('idle');
-                setUpdateMessage('');
-            }, 5000);
-        }
-    };
+    //         // Clear error after 5 seconds
+    //         setTimeout(() => {
+    //             setUpdateStatus('idle');
+    //             setUpdateMessage('');
+    //         }, 5000);
+    //     }
+    // };
 
     useEffect(() => {
         const fetchData = async () => {
@@ -103,34 +105,34 @@ export default function Dashboard() {
                 startDate.setDate(startDate.getDate() - 30);
                 const startDateIso = startDate.toISOString().split('T')[0];
 
-                let data = await getPredictionHistory({
+                const data = await getPredictionHistory({
                     days: DEFAULT_HISTORY_WINDOW,
                     startDate: startDateIso,
                 });
 
-                const latestFeatureDate = data[0]?.feature_date
-                    ? new Date(data[0].feature_date)
-                    : null;
-                const hasRecentCoverage = latestFeatureDate ? latestFeatureDate >= startDate : false;
-                const hasSufficientRecords = data.length >= DEFAULT_HISTORY_WINDOW;
+                // const latestFeatureDate = data[0]?.feature_date
+                //     ? new Date(data[0].feature_date)
+                //     : null;
+                // const hasRecentCoverage = latestFeatureDate ? latestFeatureDate >= startDate : false;
+                // const hasSufficientRecords = data.length >= DEFAULT_HISTORY_WINDOW;
 
-                if (!hasRecentCoverage || !hasSufficientRecords) {
-                    try {
-                        setBackfillStatus('running');
-                        await triggerBackfill({
-                            days: DEFAULT_HISTORY_WINDOW,
-                            startDate: startDateIso,
-                        });
-                        setBackfillStatus('success');
-                        data = await getPredictionHistory({
-                            days: DEFAULT_HISTORY_WINDOW,
-                            startDate: startDateIso,
-                        });
-                    } catch (backfillError) {
-                        console.error('Backfill attempt failed', backfillError);
-                        setBackfillStatus('failed');
-                    }
-                }
+                // if (!hasRecentCoverage || !hasSufficientRecords) {
+                //     try {
+                //         setBackfillStatus('running');
+                //         await triggerBackfill({
+                //             days: DEFAULT_HISTORY_WINDOW,
+                //             startDate: startDateIso,
+                //         });
+                //         setBackfillStatus('success');
+                //         data = await getPredictionHistory({
+                //             days: DEFAULT_HISTORY_WINDOW,
+                //             startDate: startDateIso,
+                //         });
+                //     } catch (backfillError) {
+                //         console.error('Backfill attempt failed', backfillError);
+                //         setBackfillStatus('failed');
+                //     }
+                // }
 
                 setHistory(data);
             } catch (err) {
@@ -238,9 +240,8 @@ export default function Dashboard() {
                         <h1 className="text-4xl font-bold text-gray-900">
                             Oil Price Prediction Dashboard
                         </h1>
-                        
                         {/* Update Button */}
-                        <button
+                        {/* <button
                             onClick={handleUpdateData}
                             disabled={updateStatus === 'checking' || updateStatus === 'updating'}
                             className={`
@@ -298,8 +299,8 @@ export default function Dashboard() {
                                     Update Data
                                 </>
                             )}
-                        </button>
-                    </div>
+                        </button>  */}
+                    </div> 
                     
                     <div className="flex items-center gap-4">
                         <div className="flex items-center gap-2">

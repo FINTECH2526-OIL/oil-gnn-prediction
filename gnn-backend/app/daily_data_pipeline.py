@@ -143,7 +143,7 @@ class DailyDataPipeline:
                                     
                         #                engine="pyarrow")
                         csv = csvfile.read()
-                        parse_options: pyarrow._csv.ParseOptions = pyarrow.csv.ParseOptions(delimiter='\t')
+                        parse_options: pyarrow._csv.ParseOptions = pyarrow.csv.ParseOptions(delimiter='\t', invalid_row_handler=lambda x: 'skip')
                         convert_options: pyarrow._csv.ConvertOptions = pyarrow.csv.ConvertOptions(strings_can_be_null=True)
                         maximum_no_of_cols = min(
                             len(columns), 
@@ -261,7 +261,7 @@ class DailyDataPipeline:
             # Adding in new Records into oil_df
             if oil_df is not None:
                 not_in_cache = []
-                for row in df.iterrows:
+                for row in df.iterrows():
                     if row["date"] not in oil_df['date'].values:
                         print(row["date"] + "is not in cached data, adding now.")
                         not_in_cache.append(row)
