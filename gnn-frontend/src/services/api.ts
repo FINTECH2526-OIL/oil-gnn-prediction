@@ -74,6 +74,33 @@ export async function triggerBackfill(options: {
   return fetchApi(`/backfill?${params.toString()}`, { method: 'POST' });
 }
 
+// Admin: manually patch oil prices and run prediction
+export interface PriceEntry {
+  date: string;       // YYYY-MM-DD
+  wti_price: number;
+  brent_price: number;
+}
+
+export interface PatchResult {
+  date: string;
+  predicted_delta: number;
+  predicted_direction: 'UP' | 'DOWN' | 'FLAT';
+  reference_wti: number;
+  top_contributors: Record<string, { contribution: number; percentage: number; raw_prediction: number; attention_weight: number }>;
+  total_abs_contribution: number;
+  num_countries: number;
+  model_version: string;
+  injected_dates: string[];
+  gcs_file: string;
+}
+
+export async function adminPatchPrices(prices: PriceEntry[]): Promise<PatchResult> {
+  return fetchApi('/admin/patch-prices', {
+    method: 'POST',
+    body: JSON.stringify({ prices }),
+  });
+}
+
 // Update predictions with latest data
 export async function updatePredictions(forceRefresh = false): Promise<{
   status: string;

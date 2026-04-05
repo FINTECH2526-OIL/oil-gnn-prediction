@@ -3,9 +3,9 @@ steps:
     args:
       - 'build'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/oil-gnn-repo/oil-gnn-api:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cr-repo/oil-gnn-backend:latest'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/oil-gnn-repo/oil-gnn-api:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cr-repo/oil-gnn-backend:$BUILD_ID'
       - '-f'
       - 'Dockerfile'
       - '.'
@@ -13,30 +13,31 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/oil-gnn-repo/oil-gnn-api:latest'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cr-repo/oil-gnn-backend:latest'
 
   - name: 'gcr.io/cloud-builders/docker'
     args:
       - 'push'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/oil-gnn-repo/oil-gnn-api:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/cr-repo/oil-gnn-backend:$BUILD_ID'
 
-  - name: 'gcr.io/cloud-builders/gcloud'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
     args:
       - 'run'
       - 'deploy'
-      - 'oil-gnn-api'
-      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/oil-gnn-repo/oil-gnn-api:$SHORT_SHA'
+      - 'oil-gnn-backend'
+      - '--image=us-central1-docker.pkg.dev/$PROJECT_ID/cr-repo/oil-gnn-backend:$BUILD_ID'
       - '--platform=managed'
       - '--region=us-central1'
       - '--allow-unauthenticated'
-      - '--memory=4Gi'
+      - '--memory=8Gi'
       - '--cpu=2'
       - '--timeout=300'
-      - '--set-env-vars=ALPHA_VANTAGE_API_KEY=WY4DN5PO5LQ3INPJ,GCS_BUCKET_NAME=gdelt_raw_3_years,GCP_PROJECT_ID=$PROJECT_ID'
+      - '--set-env-vars=ALPHA_VANTAGE_API_KEY=IEJCGQ47Z1P7YBQE,GCS_BUCKET_NAME=3_gdelt_raw_3_years,GCS_PROCESSED_PATH=processed_data/,GCS_MODELS_PATH=trained_models/,MODEL_RUN_ID=run_20260125_141030_01fe84'
 
 images:
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/oil-gnn-repo/oil-gnn-api:latest'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/oil-gnn-repo/oil-gnn-api:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cr-repo/oil-gnn-backend:latest'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/cr-repo/oil-gnn-backend:$BUILD_ID'
 
 timeout: 1200s
 

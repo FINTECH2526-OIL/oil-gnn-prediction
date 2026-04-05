@@ -519,6 +519,24 @@ async def admin_patch_prices(request: ManualPatchRequest):
                 "actual_close": None,
                 "error_delta": None,
             }
+
+            next_day2 = next_day + timedelta(days=1)
+            while next_day2.weekday() >= 5:
+                next_day2 += timedelta(days=1)
+            chained_record = {
+                "feature_date": next_day.strftime("%Y-%m-%d"),
+                "prediction_for_date": next_day2.strftime("%Y-%m-%d"),
+                "reference_close": predicted_close,
+                "predicted_delta": predicted_delta,
+                "predicted_close": predicted_close + predicted_delta,
+                "total_abs_contribution": result["total_abs_contribution"],
+                "num_countries": result["num_countries"],
+                "model_version": config.MODEL_RUN_ID,
+                "top_contributors": contributors_list,
+                "actual_close": None,
+                "error_delta": None,
+            }
+
             history_blob_path = f"{config.GCS_PROCESSED_PATH}predictions/history.json"
             history_blob = bucket.blob(history_blob_path)
             if history_blob.exists():
@@ -527,11 +545,13 @@ async def admin_patch_prices(request: ManualPatchRequest):
                     existing = existing["records"]
             else:
                 existing = []
-            # Remove duplicate entry for same feature_date before inserting
-            existing = [r for r in existing if r.get("feature_date") != new_record["feature_date"]]
+            skip = {new_record["feature_date"], chained_record["feature_date"]}
+            existing = [r for r in existing if r.get("feature_date") not in skip]
+            existing.insert(0, chained_record)
             existing.insert(0, new_record)
             history_blob.upload_from_string(json.dumps(existing), content_type="application/json")
             print(f"[ADMIN] Saved prediction to history: {new_record['feature_date']} -> {prediction_for_date}")
+            print(f"[ADMIN] Saved chained prediction: {chained_record['feature_date']} -> {chained_record['prediction_for_date']}")
         except Exception as hist_err:
             print(f"[ADMIN] Warning: failed to save to history: {hist_err}")
 

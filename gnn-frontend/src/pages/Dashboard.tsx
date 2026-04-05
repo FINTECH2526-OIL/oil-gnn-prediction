@@ -139,7 +139,6 @@ export default function Dashboard() {
         fetchData();
     }, []);
 
-    // Filter data by calendar date range: last N days from today (always include future predictions)
     const cutoff = new Date();
     cutoff.setDate(cutoff.getDate() - dateRange);
     cutoff.setHours(0, 0, 0, 0);
@@ -154,22 +153,26 @@ export default function Dashboard() {
         ? recordsWithActuals.reduce<number>((sum, record) => sum + Math.abs(record.error_delta ?? 0), 0) / recordsWithActuals.length
         : 0;
 
+    const _asc = [...filteredHistory].reverse();
+    const _view = _asc.length > 1 ? _asc.slice(0, -1) : _asc;
+    const _preds = _asc.length > 1 ? _asc.slice(1).map(r => r.predicted_close) : _asc.map(r => r.predicted_close);
+
     // Chart data
     const chartData = {
-        labels: filteredHistory.map((record) =>
+        labels: _view.map((record) =>
             new Date(record.prediction_for_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
-        ).reverse(),
+        ),
         datasets: [
             {
                 label: 'Predicted Close Price',
-                data: filteredHistory.map((record) => record.predicted_close).reverse(),
+                data: _preds,
                 borderColor: 'rgb(59, 130, 246)',
                 backgroundColor: 'rgba(59, 130, 246, 0.1)',
                 tension: 0.4,
             },
             {
                 label: 'Actual Close Price',
-                data: filteredHistory.map((record) => record.actual_close).reverse(),
+                data: _view.map((record) => record.actual_close),
                 borderColor: 'rgb(16, 185, 129)',
                 backgroundColor: 'rgba(16, 185, 129, 0.1)',
                 tension: 0.4,
