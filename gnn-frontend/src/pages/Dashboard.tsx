@@ -100,14 +100,8 @@ export default function Dashboard() {
                 }
 
                 // Fetch prediction history
-                const today = new Date();
-                const startDate = new Date(today);
-                startDate.setDate(startDate.getDate() - 30);
-                const startDateIso = startDate.toISOString().split('T')[0];
-
                 const data = await getPredictionHistory({
                     days: DEFAULT_HISTORY_WINDOW,
-                    startDate: startDateIso,
                 });
 
                 // const latestFeatureDate = data[0]?.feature_date
