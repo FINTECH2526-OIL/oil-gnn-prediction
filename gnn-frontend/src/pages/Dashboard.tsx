@@ -27,8 +27,7 @@ ChartJS.register(
 );
 
 type DateRange = 7 | 14 | 30;
-const PREDICTION_BUFFER_DAYS = 1;
-const DEFAULT_HISTORY_WINDOW = 30 + PREDICTION_BUFFER_DAYS;
+const DEFAULT_HISTORY_WINDOW = 90; // fetch enough to cover gaps in prediction history
 
 export default function Dashboard() {
     const [history, setHistory] = useState<PredictionRecord[]>([]);
@@ -140,8 +139,13 @@ export default function Dashboard() {
         fetchData();
     }, []);
 
-    // Filter data by date range (include buffer for the newest prediction)
-    const filteredHistory: PredictionRecord[] = history.slice(0, dateRange + PREDICTION_BUFFER_DAYS);
+    // Filter data by calendar date range: last N days from today (always include future predictions)
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - dateRange);
+    cutoff.setHours(0, 0, 0, 0);
+    const filteredHistory: PredictionRecord[] = history.filter(
+        (r) => new Date(r.prediction_for_date + 'T00:00:00') >= cutoff
+    );
 
     // Calculate metrics
     const latestPrediction = history[0];
