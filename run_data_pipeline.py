@@ -17,6 +17,7 @@ def main():
     parser.add_argument('--days-back', type=int, default=30, help='Number of historical days to fetch')
     parser.add_argument('--force-refresh', action='store_true', help='Ignore cached inputs and refetch from sources')
     parser.add_argument('--progress-bar', action='store_true', help='Show progress bar during data fetching')
+    parser.add_argument('--depend-on-metadata', action='store_true', help='Use metadata features as feature columns, Ignoring Scaler')
 
     args = parser.parse_args()
     

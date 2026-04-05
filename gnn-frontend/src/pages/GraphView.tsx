@@ -196,6 +196,7 @@ export default function GraphView() {
     }
 
     const currentRecord = history[selectedDate];
+    const _shiftDate = (s: string) => { const d = new Date(s + 'T00:00:00'); d.setDate(d.getDate() - 1); return d.toLocaleDateString(); };
 
     return (
         <div className="min-h-screen bg-gray-50 p-6">
@@ -217,7 +218,7 @@ export default function GraphView() {
                             <div>
                                 <div className="text-sm text-gray-600">Prediction Date</div>
                                 <div className="text-lg font-semibold text-gray-900">
-                                    {new Date(currentRecord.prediction_for_date).toLocaleDateString()}
+                                    {_shiftDate(currentRecord.prediction_for_date)}
                                 </div>
                             </div>
                             <div>
@@ -271,7 +272,7 @@ export default function GraphView() {
                     <div className="flex justify-between text-sm text-gray-600">
                         <span>Most Recent</span>
                         <span>
-                            {currentRecord && new Date(currentRecord.prediction_for_date).toLocaleDateString()}
+                            {currentRecord && _shiftDate(currentRecord.prediction_for_date)}
                         </span>
                         <span>Oldest</span>
                     </div>

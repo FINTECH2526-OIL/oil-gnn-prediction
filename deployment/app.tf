@@ -49,7 +49,7 @@ module "model_service" {
     }
   ]
   template_annotations = {
-    "autoscaling.knative.dev/minScale"     = "1"
+    # "autoscaling.knative.dev/minScale"     = "1"
     "run.googleapis.com/cpu-throttling"      = false 
   }
   # service_env_vars = [{

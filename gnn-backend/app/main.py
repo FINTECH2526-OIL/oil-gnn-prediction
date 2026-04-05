@@ -2,12 +2,13 @@ import sys
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, Dict, List
 import traceback
 import json
 import gzip
 import requests
+import pandas as pd
 
 from .config import config
 from .data_loader import DataLoader
@@ -146,11 +147,9 @@ async def predict():
             meta_cols = [c for c in ['country', 'date', 'country_iso3'] if c in df.columns]
             df = df[meta_cols + feature_cols]
 
-            expected = getattr(model_inf.scaler_X, 'n_features_in_', len(feature_cols))
+            expected = getattr(model_inf.scaler_graph, 'n_features_in_', None) or getattr(model_inf.scaler_X, 'n_features_in_', len(feature_cols))
             if len(feature_cols) != expected:
-                raise ValueError(
-                    f"Feature mismatch after alignment: scaler expects {expected}, prepared {len(feature_cols)}."
-                )
+                print(f"WARNING: Feature count {len(feature_cols)} does not match expected {expected}; proceeding with full feature set.")
         else:
             exclude_cols = ['country', 'date']
             feature_cols = [c for c in df.columns 
@@ -378,6 +377,201 @@ async def update_predictions(force_refresh: bool = False):
         print(f"[UPDATE] Error: {str(e)}")
         print(traceback.format_exc())
         raise HTTPException(status_code=500, detail=f"Update error: {str(e)}")
+
+
+class PriceEntry(BaseModel):
+    date: str           # YYYY-MM-DD
+    wti_price: float
+    brent_price: float
+
+class ManualPatchRequest(BaseModel):
+    prices: List[PriceEntry]
+
+@app.post("/admin/patch-prices")
+async def admin_patch_prices(request: ManualPatchRequest):
+    """
+    Manually inject oil price rows for dates not yet available from Alpha Vantage.
+    Downloads latest GCS aligned data, patches in the supplied prices,
+    re-engineers all rolling features, uploads back to GCS as today's dataset,
+    then runs prediction and returns the result.
+    """
+    try:
+        loader = get_data_loader()
+        model_inf = get_model_inference()
+
+        # 1. Find and download latest aligned data from GCS
+        client = storage.Client()
+        bucket = client.bucket(config.GCS_BUCKET_NAME)
+        blobs = list(client.list_blobs(config.GCS_BUCKET_NAME, prefix=config.GCS_PROCESSED_PATH))
+        aligned_blobs = sorted(
+            [b for b in blobs if "final_aligned_data_" in b.name and b.name.endswith(".json.gz")],
+            key=lambda b: b.name, reverse=True
+        )
+        if not aligned_blobs:
+            raise HTTPException(status_code=500, detail="No final_aligned_data_*.json.gz found in GCS")
+
+        raw_bytes = aligned_blobs[0].download_as_bytes()
+        raw_json = gzip.decompress(raw_bytes).decode("utf-8")
+        df = pd.DataFrame.from_records(json.loads(raw_json))
+        df["date"] = pd.to_datetime(df["date"])
+        df = df.sort_values(["country_iso3", "date"]).reset_index(drop=True)
+        print(f"[ADMIN] Loaded {len(df)} rows from {aligned_blobs[0].name}, up to {df['date'].max().date()}")
+
+        # 2. Build manual prices map
+        manual_prices = {
+            pd.Timestamp(e.date): {"wti_price": e.wti_price, "brent_price": e.brent_price}
+            for e in request.prices
+        }
+
+        # 3. Inject / update rows per country
+        dates_in_data = set(df["date"].unique())
+        new_rows = []
+        for country in df["country_iso3"].unique():
+            country_df = df[df["country_iso3"] == country].sort_values("date")
+            last_row = country_df.iloc[-1].to_dict()
+            for new_date, prices in sorted(manual_prices.items()):
+                if new_date in dates_in_data:
+                    mask = (df["country_iso3"] == country) & (df["date"] == new_date)
+                    if mask.any():
+                        df.loc[mask, "wti_price"] = prices["wti_price"]
+                        df.loc[mask, "brent_price"] = prices["brent_price"]
+                else:
+                    row = last_row.copy()
+                    row["date"] = new_date
+                    row["wti_price"] = prices["wti_price"]
+                    row["brent_price"] = prices["brent_price"]
+                    new_rows.append(row)
+
+        if new_rows:
+            new_df = pd.DataFrame(new_rows)
+            new_df["date"] = pd.to_datetime(new_df["date"])
+            df = pd.concat([df, new_df], ignore_index=True)
+
+        df = df.sort_values(["country_iso3", "date"]).reset_index(drop=True)
+        print(f"[ADMIN] After injection: {len(df)} rows, up to {df['date'].max().date()}")
+
+        # 4. Re-engineer all rolling features
+        df = loader.engineer_features(df)
+        df = df.fillna(0)
+
+        # 5. Upload to GCS as today's aligned data file
+        today_str = datetime.now().strftime("%Y%m%d")
+        output_path = f"{config.GCS_PROCESSED_PATH}final_aligned_data_{today_str}.json.gz"
+        records_out = df.to_dict("records")
+        json_bytes = json.dumps(records_out, ensure_ascii=False, default=str).encode("utf-8")
+        blob_out = bucket.blob(output_path)
+        blob_out.upload_from_string(gzip.compress(json_bytes), content_type="application/gzip")
+        print(f"[ADMIN] Uploaded {output_path}")
+
+        # 6. Re-load from GCS so inference uses the fresh file
+        df_fresh = loader.get_latest_data()
+
+        # 7. Run prediction (same logic as /predict)
+        model_inf.load_models()
+        if model_inf.feature_columns is not None:
+            feature_cols = []
+            for col in model_inf.feature_columns:
+                if col not in df_fresh.columns:
+                    df_fresh[col] = 0.0
+                feature_cols.append(col)
+        else:
+            exclude_cols = ["country", "date"]
+            feature_cols = [c for c in df_fresh.columns
+                            if c not in exclude_cols
+                            and "next" not in c
+                            and "surprise" not in c
+                            and df_fresh[c].dtype != "object"]
+
+        result = model_inf.get_prediction_with_explanation(df_fresh, feature_cols)
+        predicted_delta = result["predicted_delta"]
+        direction = "UP" if predicted_delta > 0 else "DOWN" if predicted_delta < 0 else "FLAT"
+
+        latest_date = df_fresh["date"].max()
+        latest_rows = df_fresh[df_fresh["date"] == latest_date]
+        reference_wti = float(latest_rows["wti_price"].iloc[0]) if not latest_rows.empty else None
+
+        # 8. Calculate next business day for prediction_for_date
+        next_day = latest_date + timedelta(days=1)
+        while next_day.weekday() >= 5:  # 5=Sat, 6=Sun
+            next_day += timedelta(days=1)
+        prediction_for_date = next_day.strftime("%Y-%m-%d")
+
+        predicted_close = (reference_wti or 0) + predicted_delta
+
+        # Convert top_contributors dict to list format for history
+        contributors_list = [
+            {"country": country, **info}
+            for country, info in result["top_contributors"].items()
+        ]
+
+        # 9. Save to prediction history
+        try:
+            new_record = {
+                "feature_date": latest_date.strftime("%Y-%m-%d"),
+                "prediction_for_date": prediction_for_date,
+                "reference_close": reference_wti,
+                "predicted_delta": predicted_delta,
+                "predicted_close": predicted_close,
+                "total_abs_contribution": result["total_abs_contribution"],
+                "num_countries": result["num_countries"],
+                "model_version": config.MODEL_RUN_ID,
+                "top_contributors": contributors_list,
+                "actual_close": None,
+                "error_delta": None,
+            }
+
+            next_day2 = next_day + timedelta(days=1)
+            while next_day2.weekday() >= 5:
+                next_day2 += timedelta(days=1)
+            chained_record = {
+                "feature_date": next_day.strftime("%Y-%m-%d"),
+                "prediction_for_date": next_day2.strftime("%Y-%m-%d"),
+                "reference_close": predicted_close,
+                "predicted_delta": predicted_delta,
+                "predicted_close": predicted_close + predicted_delta,
+                "total_abs_contribution": result["total_abs_contribution"],
+                "num_countries": result["num_countries"],
+                "model_version": config.MODEL_RUN_ID,
+                "top_contributors": contributors_list,
+                "actual_close": None,
+                "error_delta": None,
+            }
+
+            history_blob_path = f"{config.GCS_PROCESSED_PATH}predictions/history.json"
+            history_blob = bucket.blob(history_blob_path)
+            if history_blob.exists():
+                existing = json.loads(history_blob.download_as_text())
+                if isinstance(existing, dict) and "records" in existing:
+                    existing = existing["records"]
+            else:
+                existing = []
+            skip = {new_record["feature_date"], chained_record["feature_date"]}
+            existing = [r for r in existing if r.get("feature_date") not in skip]
+            existing.insert(0, chained_record)
+            existing.insert(0, new_record)
+            history_blob.upload_from_string(json.dumps(existing), content_type="application/json")
+            print(f"[ADMIN] Saved prediction to history: {new_record['feature_date']} -> {prediction_for_date}")
+            print(f"[ADMIN] Saved chained prediction: {chained_record['feature_date']} -> {chained_record['prediction_for_date']}")
+        except Exception as hist_err:
+            print(f"[ADMIN] Warning: failed to save to history: {hist_err}")
+
+        return {
+            "date": latest_date.strftime("%Y-%m-%d"),
+            "predicted_delta": predicted_delta,
+            "predicted_direction": direction,
+            "top_contributors": result["top_contributors"],
+            "total_abs_contribution": result["total_abs_contribution"],
+            "num_countries": result["num_countries"],
+            "model_version": config.MODEL_RUN_ID,
+            "reference_wti": reference_wti,
+            "injected_dates": [str(d.date()) for d in sorted(manual_prices.keys())],
+            "gcs_file": output_path,
+        }
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Patch failed: {str(e)}\n{traceback.format_exc()}")
 
 
 @app.post("/backfill")

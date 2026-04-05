@@ -45,6 +45,10 @@ class ModelInference:
             'spread_wti_brent', 'correlation_20d', 'volatility_ratio'
         ]
 
+    @staticmethod
+    def get_default_feature_columns() -> List[str]:
+        return ModelInference._default_feature_columns()
+
     def download_model_artifacts(self):
         artifacts_prefix = f"{config.GCS_MODELS_PATH}{config.MODEL_RUN_ID}/artifacts/"
         
@@ -53,8 +57,10 @@ class ModelInference:
             "model_enhanced.pkl",
             "country_models.obj",
             "scaler_X.pkl",
+            "scaler_graph.pkl",
             "adjacency.npy",
-            "metadata.json"
+            "metadata.json",
+            "features.json",
         ]
         
         local_model_dir = config.LOCAL_CACHE_DIR / config.MODEL_RUN_ID
@@ -63,16 +69,18 @@ class ModelInference:
         for filename in required_files:
             blob_name = artifacts_prefix + filename
             local_path = local_model_dir / filename
-            
-            if not local_path.exists():
-                blob = self.bucket.blob(blob_name)
-                if blob.exists():
-                    with open(local_path, "wb") as f:
-                        f.write(blob.download_as_bytes())
+            blob = self.bucket.blob(blob_name)
+            if blob.exists():
+                with open(local_path, "wb") as f:
+                    f.write(blob.download_as_bytes())
+        try:
+            print("Downloaded artifacts:", sorted(p.name for p in local_model_dir.iterdir()))
+        except Exception:
+            pass
         
         return local_model_dir
     
-    def load_models(self):
+    def load_models(self, depend_on_metadata=False):
         if self.models_loaded:
             return
         
@@ -82,19 +90,27 @@ class ModelInference:
         self.model_enhanced = joblib.load(model_dir / "model_enhanced.pkl")
         self.country_models = joblib.load(model_dir / "country_models.obj")
         self.scaler_X = joblib.load(model_dir / "scaler_X.pkl")
+        self.scaler_graph = joblib.load(model_dir / "scaler_graph.pkl") if (model_dir / "scaler_graph.pkl").exists() else None
         self.adjacency = np.load(model_dir / "adjacency.npy")
         
         metadata_features = None
         metadata_path = model_dir / "metadata.json"
+        features_path = model_dir / "features.json"
         if metadata_path.exists():
             with open(metadata_path, 'r') as f:
                 metadata = json.load(f)
-                metadata_features = metadata.get('feature_columns')
-                if metadata_features:
-                    print(
-                        f"Loaded {len(metadata_features)} features from metadata.json",
-                        file=sys.stderr,
-                    )
+                metadata_features = metadata.get('features', {}).get("feature_cols_with_graph")
+        if metadata_features is None and features_path.exists():
+            with open(features_path, 'r') as f:
+                features = json.load(f)
+                metadata_features = features.get("feature_cols_with_graph")
+
+        if self.scaler_graph is None:
+            print("WARNING: scaler_graph not loaded or missing")
+        else:
+            print(f"scaler_graph n_features_in_: {getattr(self.scaler_graph, 'n_features_in_', None)}")
+        if metadata_features is not None:
+            print(f"Loaded metadata features count: {len(metadata_features)}")
         
         scaler_features = None
         if hasattr(self.scaler_X, 'feature_names_in_'):
@@ -104,19 +120,24 @@ class ModelInference:
                     f"Loaded {len(scaler_features)} feature names from scaler.feature_names_in_",
                     file=sys.stderr,
                 )
+        print("Scaler Features:", vars(self.scaler_X))
+        print("Metadata Features:", metadata_features)
         
-        if scaler_features:
+        expected_graph = getattr(self.scaler_graph, 'n_features_in_', None) if self.scaler_graph is not None else None
+        if metadata_features and expected_graph and len(metadata_features) >= expected_graph:
+            self.feature_columns = metadata_features[:expected_graph]
+        elif scaler_features and not(depend_on_metadata):
             self.feature_columns = scaler_features
         elif metadata_features:
             expected = getattr(self.scaler_X, 'n_features_in_', None)
-            if expected and len(metadata_features) >= expected:
+            if not(depend_on_metadata) and expected and len(metadata_features) >= expected:
                 self.feature_columns = metadata_features[:expected]
                 if len(metadata_features) != expected:
                     print(
                         f"Trimmed metadata feature list from {len(metadata_features)} to {expected} to match scaler",
                         file=sys.stderr,
                     )
-            elif expected and len(metadata_features) < expected:
+            elif not(depend_on_metadata) and expected and len(metadata_features) < expected:
                 print(
                     f"WARNING: Metadata provides {len(metadata_features)} features but scaler expects {expected}. "
                     "Falling back to default feature list.",
@@ -125,6 +146,16 @@ class ModelInference:
                 self.feature_columns = self._default_feature_columns()
             else:
                 self.feature_columns = metadata_features
+        elif expected_graph:
+            base = self._default_feature_columns()
+            graph_cols = [f"graph_feat_{i}" for i in range(max(0, expected_graph - len(base)))]
+            combined = base + graph_cols
+            self.feature_columns = combined[:expected_graph]
+            if len(self.feature_columns) != expected_graph:
+                print(
+                    f"WARNING: Constructed feature list length {len(self.feature_columns)} does not match scaler_graph expected {expected_graph}.",
+                    file=sys.stderr,
+                )
         else:
             self.feature_columns = self._default_feature_columns()
             print(
@@ -136,23 +167,37 @@ class ModelInference:
     
     def predict_delta(self, X):
         self.load_models()
-        
-        X_scaled = self.scaler_X.transform(X)
-        
-        pred_base = self.model_base.predict(X_scaled)
-        enhanced_expected = getattr(self.model_enhanced, 'n_features_in_', X_scaled.shape[1])
-        if enhanced_expected == X_scaled.shape[1]:
-            pred_enhanced = self.model_enhanced.predict(X_scaled)
+
+        # base path
+        X_base = X[:, :self.scaler_X.n_features_in_]
+        X_base_scaled = self.scaler_X.transform(X_base)
+        pred_base = self.model_base.predict(X_base_scaled)
+
+        # enhanced path
+        X_full = X
+        if self.scaler_graph is not None:
+            try:
+                X_full_scaled = self.scaler_graph.transform(X_full)
+            except Exception as e:
+                print(f"WARNING: scaler_graph transform failed: {e}. Falling back to base-only.", file=sys.stderr)
+                return pred_base
+        else:
+            print("WARNING: scaler_graph missing; enhanced model will see unscaled graph features.", file=sys.stderr)
+            X_full_scaled = np.concatenate((X_base_scaled, X[:, self.scaler_X.n_features_in_:]), axis=1)
+
+        enhanced_expected = getattr(self.model_enhanced, 'n_features_in_', X_full_scaled.shape[1])
+        if enhanced_expected == X_full_scaled.shape[1]:
+            pred_enhanced = self.model_enhanced.predict(X_full_scaled)
             optimal_weight = 0.5
             final_pred = optimal_weight * pred_base + (1 - optimal_weight) * pred_enhanced
         else:
             print(
-                f"WARNING: Enhanced model expects {enhanced_expected} features but received {X_scaled.shape[1]}. "
+                f"WARNING: Enhanced model expects {enhanced_expected} features but received {X_full_scaled.shape[1]}. "
                 "Using base model prediction only.",
                 file=sys.stderr,
             )
             final_pred = pred_base
-        
+
         return final_pred
     
     def predict_with_countries(self, df, feature_cols, date=None):
@@ -189,7 +234,7 @@ class ModelInference:
             if hasattr(self.country_models, 'country_models') and country_iso3 in self.country_models.country_models:
                 scaler = self.country_models.country_scalers[country_iso3]
                 model = self.country_models.country_models[country_iso3]
-                X_scaled = scaler.transform(X)
+                X_scaled = scaler.transform(X[:,:scaler.n_features_in_])
                 pred = model.predict(X_scaled)[0]
             else:
                 pred = self.predict_delta(X)[0]

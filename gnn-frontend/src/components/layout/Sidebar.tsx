@@ -3,12 +3,12 @@ import { useUIStore } from '../../store';
 import {
   BarChart3,
   Network,
-  Activity,
-  Globe,
-  TrendingUp,
-  ChevronLeft,
-  Info,
-  Zap
+  // Activity,
+  // Globe,
+  // TrendingUp,
+  // ChevronLeft,
+  // Info,
+  // Zap
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -27,7 +27,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { sidebarCollapsed, toggleSidebar } = useUIStore();
+  const { sidebarCollapsed, /*toggleSidebar*/ } = useUIStore();
 
   // Navigation items configuration
   const navigationItems = [
@@ -48,11 +48,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ className = '' }) => {
   ];
 
   // Quick stats data (mock data for now)
-  const quickStats = [
-    { label: 'Active Countries', value: '23', change: '+2', icon: Globe },
-    { label: 'Live Events', value: '156', change: '+12', icon: Activity },
-    { label: 'Model Accuracy', value: '94.2%', change: '+1.2%', icon: TrendingUp },
-  ];
+  // const quickStats = [
+  //   { label: 'Active Countries', value: '23', change: '+2', icon: Globe },
+  //   { label: 'Live Events', value: '156', change: '+12', icon: Activity },
+  //   { label: 'Model Accuracy', value: '94.2%', change: '+1.2%', icon: TrendingUp },
+  // ];
 
   const isActive = (path: string) => location.pathname === path;
 

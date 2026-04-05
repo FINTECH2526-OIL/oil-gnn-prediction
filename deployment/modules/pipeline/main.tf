@@ -55,11 +55,11 @@ resource "google_cloudfunctions2_function" "function" {
   }
 
   service_config {
-    available_cpu = 2
+    available_cpu = 4
     service_account_email = data.google_service_account.service_account.email
     max_instance_count = 1
     available_memory  = "8G"
-    timeout_seconds   = 1080
+    timeout_seconds   = 3600
     
     environment_variables = var.env_vars
   }

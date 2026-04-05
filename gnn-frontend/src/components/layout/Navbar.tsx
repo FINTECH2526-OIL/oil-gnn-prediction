@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { useUIStore } from '../../store';
-import { Bell, Settings, User, Search, Menu } from 'lucide-react';
+import { 
+  // Bell, Settings, User, Search,
+   Menu } from 'lucide-react';
 import logo from '../../assets/fintech-logo.png';
 
 interface NavbarProps {
@@ -19,15 +21,15 @@ interface NavbarProps {
  */
 export const Navbar: React.FC<NavbarProps> = ({ className = '' }) => {
   const { toggleSidebar } = useUIStore();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [showNotifications, setShowNotifications] = useState(false);
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  // const [searchQuery, /*setSearchQuery*/] = useState('');
+  const [showNotifications, /*setShowNotifications*/] = useState(false);
+  const [showUserMenu, /*setShowUserMenu*/] = useState(false);
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    console.log('Searching for:', searchQuery);
-    // TODO: Implement search functionality when backend is ready
-  };
+  // const handleSearch = (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   console.log('Searching for:', searchQuery);
+  //   // TODO: Implement search functionality when backend is ready
+  // };
 
   return (
     <nav className={`glass-dark border-b border-white/10 ${className}`}>

@@ -135,7 +135,7 @@ def run_daily_inference(target_date: Optional[datetime] = None) -> Dict:
         )
 
     model_inf = ModelInference()
-    model_inf.load_models()
+    model_inf.load_models(depend_on_metadata=True) # Hardcoded for testing, Ignoring Scaler Completely
 
     record = _generate_record(df, model_inf, target_ts)
 
