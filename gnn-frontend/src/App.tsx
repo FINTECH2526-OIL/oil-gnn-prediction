@@ -2,6 +2,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Layout } from './components/layout/Layout';
 import Dashboard from './pages/Dashboard';
 import GraphView from './pages/GraphView';
+import AdminPage from './pages/AdminPage';
 
 /**
  * Main App component with routing configuration
@@ -20,6 +21,9 @@ function App() {
     <Router>
       <div className="App">
         <Routes>
+          {/* Standalone admin page - outside main layout, hidden from users */}
+          <Route path="/manualinputforoilprice" element={<AdminPage />} />
+
           {/* Main layout with nested routes */}
           <Route path="/" element={<Layout />}>
             {/* Redirect root to dashboard */}
